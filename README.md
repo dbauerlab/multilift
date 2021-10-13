@@ -11,7 +11,9 @@ popular genome browsers.
 
 Requirements:
 > Python >= 3.8
+>
 > streamlit >= 1.0
+>
 > pygenometracks
 
 ---
