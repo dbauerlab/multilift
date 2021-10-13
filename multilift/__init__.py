@@ -9,7 +9,7 @@ __prog_string__ = f'{__prog__} v{__version__} ({__status__})'
 __license__ = 'MIT license'
 
 
-from argparse import ArgumentParser, Namespace
+import argparse
 import logging
 from multiprocessing import cpu_count
 
@@ -40,7 +40,7 @@ logging.basicConfig(
 # Command line parsing ########################################################
 
 
-class LoggingArgumentParser(ArgumentParser):
+class LoggingArgumentParser(argparse.ArgumentParser):
     ''' Extends ArgumentParser to feed its error messages through the logging
     system '''
     def error(self, message: str) -> None:
@@ -50,9 +50,9 @@ class LoggingArgumentParser(ArgumentParser):
 # top level parser
 parser = LoggingArgumentParser(prog=__prog__)
 # subparsers for different run modes
-subparsers = parser.add_subparsers(help='commands')
+subparsers = parser.add_subparsers(help='commands', dest='subcommand')
 
-# generic / pan-subcommand flags
+# generic flags
 parser.add_argument(
     '-@', '--threads',
     type=int, default=cpu_count(),
@@ -70,6 +70,7 @@ parser.add_argument(
 subparser_app = subparsers.add_parser(
     'app',
     help='Lauch the multilift web interface')
+subparser_app.set_defaults(quiet=True)  # Running streamlit so silence stderr
 subparser_app.add_argument(
     '--state', type=str,
     help='restore session state with this multilift configuration file')
@@ -88,7 +89,7 @@ subparser_lift.add_argument(
     help='perform liftover according to this multilift configuration file')
 
 
-def parse_args() -> Namespace:
+def parse_args() -> argparse.Namespace:
     ''' Validate the command line inputs '''
     args = parser.parse_args()
     if args.quiet:
