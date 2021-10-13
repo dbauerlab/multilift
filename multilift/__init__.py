@@ -30,11 +30,11 @@ class DieOnError(logging.StreamHandler):
             raise SystemExit(-1)
 
 
-logging.basicConfig(
-    format='%(asctime)s\t%(message)s',
-    datefmt='%y%m%d %H:%M:%S',
-    level=logging.INFO,
-    handlers=[DieOnError()])
+logging_handler = DieOnError()
+logging_handler.setFormatter(logging.Formatter(
+    '%(asctime)s\t%(message)s', '%y%m%d %H:%M:%S'))
+logging.getLogger(__name__).addHandler(logging_handler)
+logging.getLogger(__name__).setLevel(logging.INFO)
 
 
 # Command line parsing ########################################################
@@ -44,7 +44,7 @@ class LoggingArgumentParser(argparse.ArgumentParser):
     ''' Extends ArgumentParser to feed its error messages through the logging
     system '''
     def error(self, message: str) -> None:
-        logging.error(message)
+        logging.getLogger(__name__).error(message)
 
 
 # top level parser
@@ -89,12 +89,12 @@ subparser_lift.add_argument(
     help='perform liftover according to this multilift configuration file')
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> (argparse.Namespace, list):
     ''' Validate the command line inputs '''
-    args = parser.parse_args()
+    args, remainder = parser.parse_known_args()
     if args.quiet:
-        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger(__name__).setLevel(logging.ERROR)
     # TODO: perform any argument validation in here
-    return args
+    return args, remainder
 
 ################################################################################

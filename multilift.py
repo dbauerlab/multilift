@@ -4,25 +4,37 @@ import logging
 from pathlib import PurePath
 import sys
 
-import streamlit.cli as stcli
+# import streamlit.cli as stcli later (where necessary) as it's slow
 
-from multilift import __prog_string__, parse_args
+from multilift import __prog__, __prog_string__, parse_args
+
+
+# Globals ######################################################################
+
+
+logger = logging.getLogger(__prog__)
+
+
+################################################################################
 
 
 if __name__ == "__main__":
 
-    args = parse_args()
-    logging.info(__prog_string__)
+    args, remainder = parse_args()
+    logger.info(__prog_string__)
 
     if args.subcommand == 'app':
-        # TODO: allow unparsed args and forward them to streamlit
+        import streamlit.cli as stcli
         sys.argv = [
             'streamlit', 'run',
-            f'{PurePath(PurePath(__file__).parent, "multilift_app.py")}']
+            f'{PurePath(PurePath(__file__).parent, "multilift_app.py")}'
+        ] + remainder
         sys.exit(stcli.main())
     elif args.subcommand == 'ini':
         pass
     elif args.subcommand == 'lift':
         pass
 
-    logging.info('Finished!')
+    print(args)
+
+    logger.info('Finished!')
