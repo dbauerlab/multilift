@@ -33,8 +33,8 @@ class DieOnError(logging.StreamHandler):
 logging_handler = DieOnError()
 logging_handler.setFormatter(logging.Formatter(
     '%(asctime)s\t%(message)s', '%y%m%d %H:%M:%S'))
-logging.getLogger(__name__).addHandler(logging_handler)
-logging.getLogger(__name__).setLevel(logging.INFO)
+logging.getLogger(__prog__).addHandler(logging_handler)
+logging.getLogger(__prog__).setLevel(logging.INFO)
 
 
 # Command line parsing ########################################################
@@ -44,7 +44,7 @@ class LoggingArgumentParser(argparse.ArgumentParser):
     ''' Extends ArgumentParser to feed its error messages through the logging
     system '''
     def error(self, message: str) -> None:
-        logging.getLogger(__name__).error(message)
+        logging.getLogger(__prog__).error(message)
 
 
 # top level parser
@@ -93,7 +93,7 @@ def parse_args() -> (argparse.Namespace, list):
     ''' Validate the command line inputs '''
     args, remainder = parser.parse_known_args()
     if args.quiet:
-        logging.getLogger(__name__).setLevel(logging.ERROR)
+        logging.getLogger(__prog__).setLevel(logging.ERROR)
     # TODO: perform any argument validation in here
     return args, remainder
 

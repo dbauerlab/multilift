@@ -4,7 +4,7 @@ import logging
 from pathlib import PurePath
 import sys
 
-# import streamlit.cli as stcli later (where necessary) as it's slow
+# import streamlit.cli as stcli later (i.e. where necessary) as it's slow
 
 from multilift import __prog__, __prog_string__, parse_args
 

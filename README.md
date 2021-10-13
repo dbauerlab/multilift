@@ -15,6 +15,8 @@ Requirements:
 > streamlit >= 1.0
 >
 > pygenometracks
+>
+> biopython
 
 ---
 
