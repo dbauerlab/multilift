@@ -7,6 +7,7 @@ import sys
 # import streamlit.cli as stcli later (i.e. where necessary) as it's slow
 
 from multilift import __prog__, __prog_string__, parse_args
+from multilift.io import SeqFile
 
 
 # Globals ######################################################################
@@ -34,7 +35,5 @@ if __name__ == "__main__":
         pass
     elif args.subcommand == 'lift':
         pass
-
-    print(args)
 
     logger.info('Finished!')

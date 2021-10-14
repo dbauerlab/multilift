@@ -1,10 +1,12 @@
 import bz2
+from collections.abc import Iterator
+from functools import cached_property
 import gzip
 import hashlib
 import logging
-from pathlib import PurePath
+from pathlib import Path
 
-from Bio import SeqIO, AlignIO
+from Bio import SeqIO, AlignIO, SeqRecord
 
 from multilift import __prog__
 
@@ -20,22 +22,23 @@ logger = logging.getLogger(__prog__)
 ################################################################################
 
 
-class _SeqIOGeneric():
+class _BioIOGeneric():
 
     def __init__(self, file: str) -> None:
-        self.file = PurePath(file)
-        self._exts = self.file.suffixes
-        if '.gz' in self.exts:
+        self.file = Path(file)
+        if not self.file.is_file():
+            logger.error(f'Cannot find file: {self.file}')
+        if '.gz' in self.file.suffixes:
             self._fileobj = gzip.open(self.file, 'rt')
             self.compressed = True
-        elif '.bz2' in self.exts:
+        elif '.bz2' in self.file.suffixes:
             self._fileobj = bz2.open(self.file, 'rt')
             self.compressed = True
         else:
             self._fileobj = open(self.file)
             self.compressed = False
 
-    @property
+    @cached_property
     def md5(self) -> str:
         ''' The MD5 checksum hex digest of the file '''
         h = hashlib.md5()
@@ -44,6 +47,13 @@ class _SeqIOGeneric():
                 h.update(chunk)
         return h.hexdigest()
 
+    def __repr__(self) -> str:
+        return \
+            f'{self.__class__.__name__}(' \
+            f'file={self.file}, ' \
+            f'format={self.format}, ' \
+            f'md5={self.md5})'
+
     def __enter__(self):
         return self
 
@@ -51,53 +61,61 @@ class _SeqIOGeneric():
         pass
 
 
-class SeqFile(_SeqIOGeneric):
-    ''' An extension of _SeqIOGeneric that wraps Bio.SeqIO, guesses the correct
+class SeqFile(_BioIOGeneric):
+    ''' An extension of _BioIOGeneric that wraps Bio.SeqIO, guesses the correct
     parser from the file extension, and provides an interator '''
 
     def __init__(self, file: str) -> None:
-        super().__init__()
-        if any(e in self._exts for e in ('.fa', '.fasta')):
-            self.format = 'fasta'
-        elif '.embl' in self._exts:
-            self.format = 'embl'
-        elif any(e in self._exts for e in ('.gb', '.genbank')):
-            self.format = 'genbank'
-        if '.dna' in self._exts:
-            self.format = 'snapgene'
-        else:
-            logger.error(
-                f'Cannot determine filetype for the extension(s) '
-                f'{"".join(self._exts)}')
+        super().__init__(file)
+        self.format = self._guess_format()
 
-    def __iter__(self):
-        for record in SeqIO.parse(self.file, self.format):
+    def _guess_format(self) -> str:
+        exts = self.file.suffixes
+        if any(e in exts for e in ('.fa', '.fasta')):
+            return 'fasta'
+        if '.embl' in exts:
+            return 'embl'
+        if any(e in exts for e in ('.gb', '.genbank')):
+            return 'genbank'
+        if '.dna' in exts:
+            return 'snapgene'
+        logger.error(
+            f'Cannot determine filetype for the extension(s) '
+            f'{"".join(exts)}')
+
+    def __iter__(self) -> Iterator[SeqRecord]:
+        self._fileobj.seek(0)  # make sure we're at the start of the file
+        for record in SeqIO.parse(self._fileobj, self.format):
             yield record
 
 
-class AlnFile(_SeqIOGeneric):
-    ''' An extension of _SeqIOGeneric that wraps Bio.AlignIO, guesses the
+class AlnFile(_BioIOGeneric):
+    ''' An extension of _BioIOGeneric that wraps Bio.AlignIO, guesses the
     correct parser from the file extension, and provides an interator '''
 
     def __init__(self, file: str) -> None:
-        super().__init__()
-        if any(e in self._exts for e in ('.fa', '.fasta')):
-            self.format = 'fasta'
-        elif '.clustal' in self._exts:
-            self.format = 'clustal'
-        elif '.maf' in self._exts:
-            self.format = 'maf'
-        elif any(e in self._exts for e in ('.nex', '.nexus')):
-            self.format = 'nexus'
-        elif any(e in self._exts for e in ('.phy', '.phylip')):
-            self.format = 'phylip'
-        elif any(e in self._exts for e in ('.sto', 'sth', '.stockholm')):
-            self.format = 'stockholm'
-        else:
-            logger.error(
-                f'Cannot determine filetype for the extension(s) '
-                f'{"".join(self._exts)}')
+        super().__init__(file)
+        self.format = self._guess_format()
 
-    def __iter__(self):
-        for record in AlignIO.parse(self.file, self.format):
+    def _guess_format(self) -> str:
+        exts = self.file.suffixes
+        if any(e in exts for e in ('.fa', '.fasta')):
+            return 'fasta'
+        if '.clustal' in exts:
+            return 'clustal'
+        if '.maf' in exts:
+            return 'maf'
+        if any(e in exts for e in ('.nex', '.nexus')):
+            return 'nexus'
+        if any(e in exts for e in ('.phy', '.phylip')):
+            return 'phylip'
+        if any(e in exts for e in ('.sto', 'sth', '.stockholm')):
+            return 'stockholm'
+        logger.error(
+            f'Cannot determine filetype for the extension(s) '
+            f'{"".join(exts)}')
+
+    def __iter__(self) -> Iterator[SeqRecord]:
+        self._fileobj.seek(0)  # make sure we're at the start of the file
+        for record in AlignIO.parse(self._fileobj, self.format):
             yield record
