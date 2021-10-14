@@ -11,7 +11,7 @@ from Bio import AlignIO, Entrez, SeqIO, SeqRecord
 from multilift import __prog__
 
 
-# Globals ######################################################################
+# Globals #####################################################################
 
 
 __all__ = ['SeqFile', 'AlnFile', 'fetch']
@@ -19,7 +19,7 @@ __all__ = ['SeqFile', 'AlnFile', 'fetch']
 logger = logging.getLogger(__prog__)
 
 
-# Classes ######################################################################
+# Classes #####################################################################
 
 
 class _BioIOGeneric():
@@ -127,7 +127,7 @@ class AlnFile(_BioIOGeneric):
             yield record
 
 
-# Functions ####################################################################
+# Functions ###################################################################
 
 
 def fetch(accession: str, email: str) -> SeqRecord:
@@ -139,4 +139,4 @@ def fetch(accession: str, email: str) -> SeqRecord:
     return SeqIO.read(handle, 'genbank')
 
 
-################################################################################
+###############################################################################
