@@ -87,7 +87,7 @@ class SeqFile(_BioIOGeneric):
             f'{"".join(exts)}')
 
     def __iter__(self) -> Iterator[SeqRecord]:
-        ''' Iterate through the file and yield Bio.SeqRecord objects '''
+        ''' Iterate and yield Bio.SeqRecord objects '''
         self._fileobj.seek(0)  # make sure we're at the start of the file
         for record in SeqIO.parse(self._fileobj, self.format):
             yield record
@@ -121,9 +121,9 @@ class AlnFile(_BioIOGeneric):
             f'{"".join(exts)}')
 
     def __iter__(self) -> Iterator[SeqRecord]:
-        ''' Iterate through the file and yield Bio.SeqRecord objects '''
+        ''' Iterate and yield Bio.SeqRecord objects '''
         self._fileobj.seek(0)  # make sure we're at the start of the file
-        for record in AlignIO.parse(self._fileobj, self.format):
+        for record in AlignIO.read(self._fileobj, self.format):
             yield record
 
 
