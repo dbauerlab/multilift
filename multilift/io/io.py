@@ -6,7 +6,7 @@ import hashlib
 import logging
 from pathlib import Path
 
-from Bio import SeqIO, AlignIO, SeqRecord
+from Bio import AlignIO, Entrez, SeqIO, SeqRecord
 
 from multilift import __prog__
 
@@ -14,12 +14,12 @@ from multilift import __prog__
 # Globals ######################################################################
 
 
-__all__ = ['SeqFile', 'AlnFile']
+__all__ = ['SeqFile', 'AlnFile', 'fetch']
 
 logger = logging.getLogger(__prog__)
 
 
-################################################################################
+# Classes ######################################################################
 
 
 class _BioIOGeneric():
@@ -119,3 +119,16 @@ class AlnFile(_BioIOGeneric):
         self._fileobj.seek(0)  # make sure we're at the start of the file
         for record in AlignIO.parse(self._fileobj, self.format):
             yield record
+
+
+# Functions ####################################################################
+
+
+def fetch(accession: str, email: str) -> SeqRecord:
+    Entrez.email = email
+    handle = Entrez.efetch(
+        db='nucleotide', id=accession, rettype='gb', retmode='text')
+    return SeqIO.read(handle, 'genbank')
+
+
+################################################################################
