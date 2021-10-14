@@ -23,6 +23,8 @@ logger = logging.getLogger(__prog__)
 
 
 class _BioIOGeneric():
+    ''' PRIVATE. Base class for the SeqFile and AlnFile parser classes
+    containing the shared functionality '''
 
     def __init__(self, file: str) -> None:
         self.file = Path(file)
@@ -58,7 +60,7 @@ class _BioIOGeneric():
         return self
 
     def __exit__(self, type, value, traceback):
-        pass
+        self._fileobj.close()
 
 
 class SeqFile(_BioIOGeneric):
@@ -70,6 +72,7 @@ class SeqFile(_BioIOGeneric):
         self.format = self._guess_format()
 
     def _guess_format(self) -> str:
+        ''' PRIVATE. Guess the filetype or raise an error via the log '''
         exts = self.file.suffixes
         if any(e in exts for e in ('.fa', '.fasta')):
             return 'fasta'
@@ -84,6 +87,7 @@ class SeqFile(_BioIOGeneric):
             f'{"".join(exts)}')
 
     def __iter__(self) -> Iterator[SeqRecord]:
+        ''' Iterate through the file and yield Bio.SeqRecord objects '''
         self._fileobj.seek(0)  # make sure we're at the start of the file
         for record in SeqIO.parse(self._fileobj, self.format):
             yield record
@@ -98,6 +102,7 @@ class AlnFile(_BioIOGeneric):
         self.format = self._guess_format()
 
     def _guess_format(self) -> str:
+        ''' PRIVATE. Guess the filetype or raise an error via the log '''
         exts = self.file.suffixes
         if any(e in exts for e in ('.fa', '.fasta')):
             return 'fasta'
@@ -116,6 +121,7 @@ class AlnFile(_BioIOGeneric):
             f'{"".join(exts)}')
 
     def __iter__(self) -> Iterator[SeqRecord]:
+        ''' Iterate through the file and yield Bio.SeqRecord objects '''
         self._fileobj.seek(0)  # make sure we're at the start of the file
         for record in AlignIO.parse(self._fileobj, self.format):
             yield record
@@ -125,6 +131,8 @@ class AlnFile(_BioIOGeneric):
 
 
 def fetch(accession: str, email: str) -> SeqRecord:
+    ''' Fetch a single nucleotide record from NCBI as GenBank and return an
+    annotated Bio.SeqRecord '''
     Entrez.email = email
     handle = Entrez.efetch(
         db='nucleotide', id=accession, rettype='gb', retmode='text')
