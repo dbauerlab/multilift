@@ -74,7 +74,7 @@ class SeqFile(_BioIOGeneric):
     def _guess_format(self) -> str:
         ''' PRIVATE. Guess the filetype or raise an error via the log '''
         exts = self.file.suffixes
-        if any(e in exts for e in ('.fa', '.fasta')):
+        if any(e in exts for e in ('.fa', '.faa', '.fasta')):
             return 'fasta'
         if '.embl' in exts:
             return 'embl'
