@@ -30,10 +30,12 @@ class _BioIOGeneric():
         self.file = Path(file)
         if not self.file.is_file():
             logger.error(f'Cannot find file: {self.file}')
-        if '.gz' in self.file.suffixes:
+        # invert extension list to respect precedence
+        self._exts = [ext.lower() for ext in self.file.suffixes][::-1]
+        if '.gz' in self._exts:
             self._fileobj = gzip.open(self.file, 'rt')
             self.compressed = True
-        elif '.bz2' in self.file.suffixes:
+        elif '.bz2' in self._exts:
             self._fileobj = bz2.open(self.file, 'rt')
             self.compressed = True
         else:
@@ -73,18 +75,18 @@ class SeqFile(_BioIOGeneric):
 
     def _guess_format(self) -> str:
         ''' PRIVATE. Guess the filetype or raise an error via the log '''
-        exts = self.file.suffixes
-        if any(e in exts for e in ('.fa', '.faa', '.fasta')):
-            return 'fasta'
-        if '.embl' in exts:
-            return 'embl'
-        if any(e in exts for e in ('.gb', '.genbank')):
-            return 'genbank'
-        if '.dna' in exts:
-            return 'snapgene'
+        for ext in self._exts:
+            if ext in ('.fa', '.faa', '.fasta'):
+                return 'fasta'
+            if ext == '.embl':
+                return 'embl'
+            if ext in ('.gb', '.genbank'):
+                return 'genbank'
+            if ext == '.dna':
+                return 'snapgene'
         logger.error(
             f'Cannot determine filetype for the extension(s) '
-            f'{"".join(exts)}')
+            f'{"".join(self.file.suffixes)}')
 
     def __iter__(self) -> Iterator[SeqRecord]:
         ''' Iterate and yield Bio.SeqRecord objects '''
@@ -103,19 +105,19 @@ class AlnFile(_BioIOGeneric):
 
     def _guess_format(self) -> str:
         ''' PRIVATE. Guess the filetype or raise an error via the log '''
-        exts = self.file.suffixes
-        if any(e in exts for e in ('.fa', '.fasta')):
-            return 'fasta'
-        if '.clustal' in exts:
-            return 'clustal'
-        if '.maf' in exts:
-            return 'maf'
-        if any(e in exts for e in ('.nex', '.nexus')):
-            return 'nexus'
-        if any(e in exts for e in ('.phy', '.phylip')):
-            return 'phylip'
-        if any(e in exts for e in ('.sto', 'sth', '.stockholm')):
-            return 'stockholm'
+        for ext in self._exts:
+            if ext in ('.fa', '.faa', '.fasta', '.aln'):
+                return 'fasta'
+            if ext == '.clustal':
+                return 'clustal'
+            if ext == '.maf':
+                return 'maf'
+            if ext in ('.nex', '.nexus'):
+                return 'nexus'
+            if ext in ('.phy', '.phylip'):
+                return 'phylip'
+            if ext in ('.sto', 'sth', '.stockholm'):
+                return 'stockholm'
         logger.error(
             f'Cannot determine filetype for the extension(s) '
             f'{"".join(exts)}')
