@@ -10,6 +10,7 @@ __license__ = 'MIT license'
 
 
 import argparse
+from collections import deque
 import logging
 from multiprocessing import cpu_count
 
@@ -21,11 +22,23 @@ class DieOnError(logging.StreamHandler):
     ''' Extends logging.StreamHandler to write error messages through the
     logging system before the program dies '''
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.history = deque(maxlen=6)
+
     def emit(self, logrecord: logging.LogRecord) -> None:
         ''' Push error message to the logging system and die if appropriate '''
         if logrecord.levelno in (logging.ERROR, logging.CRITICAL):
             logrecord.msg = f'[ERROR] {logrecord.msg}'
+        self.history.appendleft(logrecord.msg)
+        if (n_identical := sum(m == logrecord.msg for m in self.history)) > 5:
+            return
         super().emit(logrecord)
+        if n_identical == 5:
+            super().emit(logging.makeLogRecord({
+                'msg': '... further instances of this message will be suppressed',
+                'level': logging.INFO
+            }))
         if logrecord.levelno in (logging.ERROR, logging.CRITICAL):
             raise SystemExit(-1)
 
