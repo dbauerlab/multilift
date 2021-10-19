@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
-from pathlib import PurePath
 import sys
-
-# import streamlit.cli as stcli later (i.e. where necessary) as it's slow
 
 from multilift import __prog__, __prog_string__, parse_args
 
@@ -25,14 +22,17 @@ if __name__ == "__main__":
 
     if args.subcommand == 'app':
         import streamlit.cli as stcli
-        sys.argv = [
-            'streamlit', 'run',
-            f'{PurePath(PurePath(__file__).parent, "multilift_app.py")}'
-        ] + remainder
+        from multilift.subcommands.multilift_app import multilift_app_path
+        sys.argv = ['streamlit', 'run', multilift_app_path]
         sys.exit(stcli.main())
-    elif args.subcommand == 'ini':
-        pass
+    elif args.subcommand == 'init':
+        from multilift.subcommands.multilift_init import multilift_init
+        multilift_init()
     elif args.subcommand == 'lift':
-        pass
+        from multilift.subcommands.multilift_lift import multilift_lift
+        multilift_lift()
+    elif args.subcommand == 'fetch':
+        from multilift.subcommands.multilift_fetch import multilift_fetch
+        multilift_fetch()
 
     logger.info('Finished!')
