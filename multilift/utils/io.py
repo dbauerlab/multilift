@@ -13,8 +13,6 @@ from multilift.utils import \
 # Globals #####################################################################
 
 
-__all__ = ['AlnFile', 'fetch', 'SeqFile']
-
 logger = logging.getLogger(__prog__)
 
 
@@ -25,7 +23,7 @@ class _BioIOGeneric():
     ''' PRIVATE. Base class for the SeqFile and AlnFile parser classes
     containing the shared functionality '''
 
-    def __init__(self, file: str, , filetype: str) -> None:
+    def __init__(self, file: str, filetype: str) -> None:
         self.file = Path(file)
         self.filetype = filetype
         if not self.file.is_file():

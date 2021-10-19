@@ -93,14 +93,14 @@ def file_hash(file: Path) -> str:
 def guess_filetype(file: Path) -> (str, [str]):
     ''' Attempt to guess the filetype from the extension, returning the
     filetype and a list of potential file applications '''
-    filetype = ''
+    ft = ''
     for ext in extensions(file):
-        if (filetype := filetype_associations.get(ext, '')):
+        if (ft := filetype_associations.get(ext, '')):
             break
-    if not filetype:
+    if not ft:
         logger.warning(f'Cannot determine filetype for "{file}"')
-    applications = [k for k, v in supported_filetypes.items() if filetype in v]
-    return filetype, applications
+        return ft, list(supported_filetypes.keys())
+    return ft, [k for k, v in supported_filetypes.items() if ft in v]
 
 
 def open_helper(file, mode='r') -> Callable:
