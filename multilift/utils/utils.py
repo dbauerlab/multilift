@@ -23,20 +23,17 @@ supported_filetypes['sequence'] = {
     'fasta': ('.fa', '.faa', '.fasta'),
     'embl': ('.embl', ),
     'genbank': ('.gb', '.genbank'),
-    'snapgene': ('.dna', )
-}
+    'snapgene': ('.dna', )}
 supported_filetypes['alignment'] = {
     'fasta': ('.fa', '.faa', '.fasta', '.aln'),
     'clustal': ('.clustal', ),
     'maf': ('.maf', ),
     'nexus': ('.nex', '.nexus'),
     'phylip': ('.phy', '.phylip'),
-    'stockholm': ('.sto', '.sth', '.stockholm')
-}
+    'stockholm': ('.sto', '.sth', '.stockholm')}
 supported_filetypes['annotation'] = {
     'bed': ('.bed', ),
-    'general': ('.gtf', '.gff', '.gff2', '.gff3')
-}
+    'general': ('.gtf', '.gff', '.gff2', '.gff3')}
 supported_filetypes['data'] = {
     'bed': ('.bed', ),
     'link': ('.link', ),
@@ -46,15 +43,13 @@ supported_filetypes['data'] = {
     'narrowpeak': (),
     'broadpeak': (),
     'gappedpeak': (),
-    'beddetail': ()
-}
+    'beddetail': ()}
 
 filetype_associations = {
     ext: filetype
     for assocs in supported_filetypes.values()
     for filetype, exts in assocs.items()
-    for ext in exts
-}
+    for ext in exts}
 
 track_types = {
     'wiggle_0': 'wiggle',
@@ -62,22 +57,21 @@ track_types = {
     'broadPeak': None,
     'gappedPeak': None,
     'bedDetail': None,
-    'bedGraph': None
-}
+    'bedGraph': None}
 
 
 # Functions ###################################################################
 
 
-def basename(file) -> str:
+def basename(file: Path) -> str:
     ''' Return the basename (all extensions stripped) of a file '''
     return PurePath(file).name.partition('.')[0]
 
 
-def extensions(file, precedence_order=True) -> list[str]:
+def extensions(file: Path, precedence_order=True) -> list[str]:
     ''' Return the extensions of a file, converted to lowercase, and optionally
     inverted to reflect precedence '''
-    exts = [ext.lower() for ext in Path(file).suffixes]
+    exts = [ext.lower() for ext in file.suffixes]
     return exts[::-1] if precedence_order else exts
 
 
@@ -103,14 +97,33 @@ def guess_filetype(file: Path) -> (str, [str]):
     return ft, [k for k, v in supported_filetypes.items() if ft in v]
 
 
-def open_helper(file, mode='r') -> Callable:
-    ''' Return the appropriate function to open a file '''
-    exts = extensions(file)
-    if '.gz' in exts:
-        return partial(gzip.open, mode=mode + 't')
-    elif '.bz2' in exts:
-        return partial(bz2.open, mode=mode + 't')
-    return partial(open, mode=mode)
+def open_helper(
+        file: Path, mode='r', create: bool=True) -> Callable:
+    ''' Return a handle to an opened file, transparently handling gzip or bz2
+    compression according to the file extension.
+    mode='r'    open for reading        must be present         pointer @ 0
+    mode='a'    open for read/write     create if needed        pointer @ EOF
+    mode='w'    open for writing        create and truncate     pointer @ 0 '''
+    if not (dir_path := Path(PurePath(file).parent)).is_dir():
+        if create:
+            dir_path.mkdir(parents=True)
+        else:
+            logger.error(f'Cannot open file. No directory: {dir_path}')
+    make_first = mode == 'r' and not file.is_file()
+    if '.gz' in (exts := extensions(file)):
+        if make_first:
+            with gzip.open(file, 'wt'):
+                pass
+        return gzip.open(file, mode + 't')
+    if '.bz2' in exts:
+        if make_first:
+            with bz2.open(file, 'wt'):
+                pass
+        return bz2.open(file, mode + 't')
+    if make_first:
+        with open(file, 'w'):
+            pass
+    return open(file, mode)
 
 
 ###############################################################################

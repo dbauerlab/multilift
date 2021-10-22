@@ -6,8 +6,7 @@ from pathlib import Path
 from Bio import AlignIO, Entrez, SeqIO, SeqRecord
 
 from multilift import __prog__
-from multilift.utils import \
-    open_helper, file_hash, filetype_associations, supported_filetypes
+from multilift.utils import open_helper, file_hash
 
 
 # Globals #####################################################################
@@ -26,8 +25,6 @@ class _BioIOGeneric():
     def __init__(self, file: str, filetype: str) -> None:
         self.file = Path(file)
         self.filetype = filetype
-        if not self.file.is_file():
-            logger.error(f'Cannot find file: {self.file}')
 
     def __repr__(self) -> str:
         return \

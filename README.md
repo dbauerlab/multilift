@@ -17,6 +17,8 @@ Requirements:
 > pygenometracks
 >
 > biopython
+>
+> PyYAML
 
 ---
 

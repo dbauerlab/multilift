@@ -13,6 +13,7 @@ import argparse
 from collections import deque
 import logging
 from multiprocessing import cpu_count
+from textwrap import dedent
 
 
 # Logging #####################################################################
@@ -38,9 +39,8 @@ class DieOnError(logging.StreamHandler):
         super().emit(logrecord)
         if n_identical == 5:
             super().emit(logging.makeLogRecord({
-                'msg': '... further instances of this message will be suppressed',
-                'level': logging.INFO
-            }))
+                'msg': '... suppressing further instances of this message',
+                'level': logging.INFO}))
         if logrecord.levelno in (logging.ERROR, logging.CRITICAL):
             raise SystemExit(-1)
 
@@ -89,15 +89,26 @@ subparser_app.add_argument(
 # multilift init
 subparser_init = subparsers.add_parser(
     'init',
-    help='initialise a multilift configuration file')
+    help='initialise a multilift configuration file',
+    epilog='Genome/sequence names passed through `--reference` and \
+    `--liftovers` may then be used as arguments to `multilift init` to input \
+    the files to be lifted over for each genome/sequence: ```multilift init \
+    liftover.config --reference wuhan --liftovers england02 --wuhan \
+    NC_045512.gb wuhan.bed --england02 england02.fa contacts.link```')
 subparser_init.add_argument(
-    '-r', '--reference', type=str, nargs=1, required=True,
+    'state', type=str,
+    help='name of the configuration file (directory path will be created)')
+subparser_init.add_argument(
+    '--reference', type=str, nargs=1, required=True,
     help='name for the reference genome/sequence (no spaces)')
 subparser_init.add_argument(
-    '-l', '--liftovers', type=str, nargs='+', required=True,
+    '--annotation', type=str, nargs='+',
+    help='file(s) of reference annotations, to allow ORF-aware alignment')
+subparser_init.add_argument(
+    '--liftovers', type=str, nargs='+', required=True,
     help='name(s) for the genome/sequence to liftover (no spaces)')
 subparser_init.add_argument(
-    '-a', '--alignment', type=str, nargs='+',
+    '--alignment', type=str, nargs='+',
     help='pre-prepared alignment(s) to use for liftover calculations')
 
 # multilift lift
