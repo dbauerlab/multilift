@@ -18,19 +18,21 @@ logger = logging.getLogger(__prog__)
 
 
 class State():
-    ''' A class to store the current state ('liftover configuration') of
-    multilift.  '''
+    ''' A class to store the current state (aka 'liftover configuration') of
+    multilift '''
 
-    def __init__(self, file: Path) -> None:
+    _attr_defaults = {
+        'name': None,
+        'type': None,
+        'filetype': None,
+        'md5': None}
+
+    def __init__(self, file: Path, dump_on_modify: bool=False) -> None:
         ''' Init the class and associate it with a file. We always require the
         class to be file-backed so that changes can be immediately dumped. '''
         self.file = file
+        self.dump_on_modify = dump_on_modify
         self.load()
-        self._attr_defaults = {
-            'name': None,
-            'type': None,
-            'filetype': None,
-            'md5': None}
 
     def __repr__(self) -> str:
         return f'State(reference={self.reference}, liftovers={self.liftovers})'
@@ -61,14 +63,14 @@ class State():
         with open_helper(self.file) as F:
             self.data = \
                 {} if not (data := yaml.load(F, Loader=yaml.Loader)) else data
-        self._modified = False
+        self.modified = False
 
     def dump(self) -> None:
         ''' Dump current state as YAML to self.file, overwriting contents '''
-        if self._modified:
+        if self.modified:
             with open_helper(self.file, 'w') as F:
                 print(self, file=F, flush=True)
-        self._modified = False
+        self.modified = False
 
     def add_genome(self, genome: str, as_reference: bool=False) -> None:
         ''' Add a genome to the current state and/or set an existing genome
@@ -80,17 +82,24 @@ class State():
             self.data['reference'] = genome
         elif genome not in self.liftovers:
             self.data['liftovers'] = self.liftovers + [genome]
+        self.modified = True
+        if self.dump_on_modify:
+            self.dump()
 
     def del_genome(self, genome: str) -> None:
         ''' Delete a genome from the current state and any associated files '''
         if self.reference == genome:
             del(self.data['reference'])
-        elif genome in self.liftovers:
+        else:
             self.data['liftovers'] = [g for g in self.liftovers if g != genome]
         try:
             del(self.data[genome])
         except KeyError:
-            pass
+            logger.error(
+                f'The genome "{genome}" is not included in this multilift state')
+        self.modified = True
+        if self.dump_on_modify:
+            self.dump()
 
     def __getitem__(self, target) -> Any:
         if type(target) is not tuple:
@@ -126,6 +135,9 @@ class State():
             if file not in self.data[genome]:
                 self.data[genome][file] = {}
             self.data[genome][file][attr] = value
+        self.modified = True
+        if self.dump_on_modify:
+            self.dump()
 
     def __delitem__(self, target) -> None:
         ''' Delete a genome, file, or attribute, and prune upwards if
@@ -150,6 +162,9 @@ class State():
             logger.error(
                 f'The genome "{genome}", file "{file}", or attribute "{attr}"'
                 'is not included in this multilift state')
+        self.modified = True
+        if self.dump_on_modify:
+            self.dump()
 
     def __enter__(self):
         return self
