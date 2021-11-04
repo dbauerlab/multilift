@@ -4,6 +4,7 @@ __email__ = ''
 __prog__ = 'multilift'
 __version__ = '0.1'
 __status__ = 'Development'
+__website__ = 'https://github.com/dbauerlab/multilift'
 __prog_string__ = f'{__prog__} v{__version__} ({__status__})'
 
 __license__ = 'MIT license'
@@ -13,7 +14,6 @@ import argparse
 from collections import deque
 import logging
 from multiprocessing import cpu_count
-from textwrap import dedent
 
 
 # Logging #####################################################################
@@ -63,14 +63,16 @@ class LoggingArgumentParser(argparse.ArgumentParser):
 
 
 # top level parser
-parser = LoggingArgumentParser(prog=__prog__)
+parser = LoggingArgumentParser(
+    prog=__prog__,
+    epilog=f'{__prog_string__} {__website__}')
 # subparsers for different run modes
-subparsers = parser.add_subparsers(help='commands', dest='subcommand')
+subparsers = parser.add_subparsers(dest='subcommand')
 
 # generic flags
 parser.add_argument(
     '-@', '--threads', type=int, default=cpu_count(),
-    help='number of processes to use (defaults max available [=%(default)s])')
+    help='number of processes to use (defaults to max [=%(default)s])')
 parser.add_argument(
     '-v', '--version', action='version', version=__version__)
 parser.add_argument(
@@ -97,16 +99,17 @@ subparser_init = subparsers.add_parser(
     NC_045512.gb wuhan.bed --england02 england02.fa contacts.link```')
 subparser_init.add_argument(
     'state', type=str,
-    help='name of the configuration file (directory path will be created)')
+    help='name of the configuration file to create (non-existent directories \
+    in path will be created)')
 subparser_init.add_argument(
-    '--reference', type=str, nargs=1, required=True,
+    '--reference', type=str, required=True,
     help='name for the reference genome/sequence (no spaces)')
-subparser_init.add_argument(
-    '--annotation', type=str, nargs='+',
-    help='file(s) of reference annotations, to allow ORF-aware alignment')
 subparser_init.add_argument(
     '--liftovers', type=str, nargs='+', required=True,
     help='name(s) for the genome/sequence to liftover (no spaces)')
+subparser_init.add_argument(
+    '--annotation', type=str, nargs='+',
+    help='file(s) of reference annotations, to allow ORF-aware alignment')
 subparser_init.add_argument(
     '--alignment', type=str, nargs='+',
     help='pre-prepared alignment(s) to use for liftover calculations')
@@ -137,7 +140,7 @@ def parse_args() -> (argparse.Namespace, list):
     if args.quiet:
         logging.getLogger(__prog__).setLevel(logging.ERROR)
     if args.subcommand == 'init':
-        for extra_arg in args.reference + args.liftovers:
+        for extra_arg in [args.reference] + args.liftovers:
             subparser_init.add_argument(f'--{extra_arg}', type=str, nargs='+')
     if args.subcommand != 'app':
         args, unknown_args = parser.parse_args(), []
