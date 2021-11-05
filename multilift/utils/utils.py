@@ -13,7 +13,7 @@ from multilift import __prog__
 
 
 __all__ = [
-    'supported_filetypes', 'filetype_associations',
+    'supported_filetypes', 'filetype_associations', 'ignored_filetypes',
     'basename', 'extensions', 'file_hash', 'guess_filetype', 'open_helper']
 
 Pathish = Union[Path, PurePath, str]
@@ -35,10 +35,6 @@ supported_filetypes = {
         'phylip': ('.phy', '.phylip'),
         'stockholm': ('.sto', '.sth', '.stockholm')
     },
-    'annotation': {
-        'bed': ('.bed', ),
-        'general': ('.gtf', '.gff', '.gff2', '.gff3')
-    },
     'data': {
         'bed': ('.bed', ),
         'link': ('.link', ),
@@ -50,10 +46,13 @@ supported_filetypes = {
         'gappedpeak': (),
         'beddetail': ()
     },
-    None: {
-        None: ('.fai', '.gzi', '.bam', '.bai', '.csi')
+    'annotation': {
+        'bed': ('.bed', ),
+        'general': ('.gtf', '.gff', '.gff2', '.gff3')
     }
 }
+
+ignored_filetypes = ('.fai', '.gzi', '.bam', '.bai', '.csi')
 
 filetype_associations = {
     ext: filetype
@@ -101,11 +100,10 @@ def guess_filetype(file: Pathish) -> (str, [str]):
     ft = ''
     file = Path(file)
     for ext in extensions(file):
-        if ext in filetype_associations:
-            ft = filetype_associations[ext]
+        if (ft := filetype_associations.get(ext, '')):
             break
-    if ft == '':
-        logger.warning(f'Cannot determine filetype for "{file}"')
+    if not ft:
+        logger.warning(f'Cannot determine filetype: {file}')
         return ft, list(supported_filetypes.keys())
     return ft, [k for k, v in supported_filetypes.items() if ft in v]
 
@@ -122,21 +120,22 @@ def open_helper(file: Pathish, mode='r', create: bool=True) -> Callable:
             dir_path.mkdir(parents=True)
         else:
             logger.error(f'Cannot open file. No directory: {dir_path}')
-    make_first = mode == 'r' and not file.is_file()
     if '.gz' in (exts := extensions(file)):
-        if make_first:
-            with gzip.open(file, 'wt'):
+        creator = partial(gzip.open, mode='wt')
+        opener = partial(gzip.open, mode=mode + 't')
+    elif '.bz2' in exts:
+        creator = partial(bz2.open, mode='wt')
+        opener = partial(bz2.open, mode=mode + 't')
+    else:
+        creator = partial(open, mode='w')
+        opener = partial(open, mode=mode)
+    if mode == 'r' and not file.is_file():
+        if create:
+            with creator(file):
                 pass
-        return gzip.open(file, mode + 't')
-    if '.bz2' in exts:
-        if make_first:
-            with bz2.open(file, 'wt'):
-                pass
-        return bz2.open(file, mode + 't')
-    if make_first:
-        with open(file, 'w'):
-            pass
-    return open(file, mode)
+        else:
+            logger.error(f'Cannot open file for reading: {file}')
+    return opener(file)
 
 
 ###############################################################################

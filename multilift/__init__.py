@@ -103,16 +103,14 @@ subparser_init.add_argument(
     in path will be created)')
 subparser_init.add_argument(
     '--reference', type=str, required=True,
-    help='name for the reference genome/sequence (no spaces)')
+    help='name of the reference genome/sequence (no spaces)')
 subparser_init.add_argument(
-    '--liftovers', type=str, nargs='+', required=True,
-    help='name(s) for the genome/sequence to liftover (no spaces)')
+    '--liftover', type=str, nargs='+', required=True,
+    help='name(s) of the genome/sequence to liftover (no spaces)')
 subparser_init.add_argument(
-    '--annotation', type=str, nargs='+',
-    help='file(s) of reference annotations, to allow ORF-aware alignment')
-subparser_init.add_argument(
-    '--alignment', type=str, nargs='+',
-    help='pre-prepared alignment(s) to use for liftover calculations')
+    '--alignment', type=str, nargs='+', default=[],
+    help='pre-prepared alignment(s) of the reference and liftover sequences \
+    to use for liftover calculations')
 
 # multilift lift
 subparser_lift = subparsers.add_parser(
@@ -140,7 +138,7 @@ def parse_args() -> (argparse.Namespace, list):
     if args.quiet:
         logging.getLogger(__prog__).setLevel(logging.ERROR)
     if args.subcommand == 'init':
-        for extra_arg in [args.reference] + args.liftovers:
+        for extra_arg in [args.reference] + args.liftover:
             subparser_init.add_argument(f'--{extra_arg}', type=str, nargs='+')
     if args.subcommand != 'app':
         args, unknown_args = parser.parse_args(), []

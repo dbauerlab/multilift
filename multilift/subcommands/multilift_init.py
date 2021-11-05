@@ -1,12 +1,9 @@
 import argparse
 import logging
-from pathlib import Path
 
 from multilift import __prog__
-from multilift.utils import basename, file_hash, guess_filetype
+from multilift.utils import extensions, ignored_filetypes
 from multilift.utils.state import MultiliftState
-
-import yaml
 
 
 # Globals #####################################################################
@@ -25,15 +22,19 @@ def multilift_init(args: argparse.Namespace) -> None:
 
     with MultiliftState(args.state, overwrite=True) as S:
         S.add_genome(args.reference, True)
-        for lift in args.liftovers:
+        for lift in args.liftover:
             S.add_genome(lift)
         for genome in S.genomes:
             for file in getattr(args, genome):
-                filetype, applications = guess_filetype(file)
-                if filetype is None:
+                if any(ext in ignored_filetypes for ext in extensions(file)):
                     logger.info(f'Ignoring {file}')
                     continue
-                S.add_file(genome, file, filetype=filetype)
+                S.add_file(file, genome=genome)
+        for file in args.alignment:
+            if any(ext in ignored_filetypes for ext in extensions(file)):
+                logger.info(f'Ignoring {file}')
+                continue
+            S.add_file(file, application='alignment')
 
 
 ###############################################################################

@@ -11,8 +11,6 @@ from multilift.utils import basename, file_hash, guess_filetype, open_helper
 # Globals #####################################################################
 
 
-yaml.emitter.Emitter.process_tag = lambda self, *args, **kw: None
-
 Pathish = Union[Path, PurePath, str]
 
 logger = logging.getLogger(__prog__)
@@ -22,175 +20,159 @@ logger = logging.getLogger(__prog__)
 
 
 class MultiliftState():
-    ''' A class to store the current state (aka 'liftover configuration') of
+    ''' A class to store the current state (aka liftover configuration) of
     multilift '''
 
-    _attr_defaults = {
+    _file_attr_defaults = {
+        'application': '',
+        'genome': '',
         'name': '',
         'type': '',
         'filetype': '',
-        'application': '',
         'md5': ''}
 
-    def __init__(self, file: Pathish, dump_on_modify: bool=False,
-                overwrite: bool=False) -> None:
+    def __init__(self, file: Pathish,
+                dump_on_modify: bool=False, overwrite: bool=False) -> None:
         ''' Init the class and associate it with a file. We always require the
         class to be file-backed so that changes can be immediately dumped. '''
         self.file = Path(file)
         self.dump_on_modify = dump_on_modify
         if overwrite:
-            self.data = {}
-            self.dump()
-        else:
-            self.load()
-
-    @property
-    def genomes(self) -> list[str]:
-        ''' The name(s) of the genomes available within the current state '''
-        return self.data.get('genomes', [])
+            with open_helper(self.file, 'w'):
+                pass
+        self.load()
 
     def add_genome(self, genome: str, as_reference: bool=False) -> None:
         ''' Add a genome to the current state '''
         if genome not in self.genomes:
-            self.data['genomes'] = self.genomes + [genome]
-            self.data[genome] = {}
+            self.genomes.append(genome)
         if as_reference:
-            self.data['reference'] = genome
+            self.reference = genome
         if self.dump_on_modify:
             self.dump()
 
     def del_genome(self, genome: str) -> None:
         ''' Delete a genome from the current state and all associated files '''
-        try:
-            self.data['genomes'] = [g for g in self.genomes if g != genome]
-            if self.reference == genome:
-                del(self.data['reference'])
-            del(self.data[genome])
-        except KeyError:
-            pass
+        self.genomes = [g for g in self.genomes if g != genome]
+        if self.reference == genome:
+            self.reference = None
+        self._files = {
+            k: v for k, v in self._files.items()
+            if v.get('genome', _file_attr_defaults['genome']) != genome}
         if self.dump_on_modify:
             self.dump()
 
-    @property
-    def reference(self) -> Union[str, None]:
-        ''' The name of the reference genome for the current state '''
-        return self.data.get('reference', None)
-
-    @reference.setter
-    def reference(self, genome: str) -> None:
-        ''' Set the reference genome for the current state '''
-        self.add_genome(genome, True)
-
-    def add_file(self, genome: str, file: Pathish,
-            name: str='', filetype: str='',
-            application: str='', md5: str='') -> None:
-        ''' Add / overwrite a file object for `genome` '''
+    def add_file(self, file: Pathish,
+            md5: str='', genome: str='', application: str='',
+            name: str='', filetype: str='') -> None:
+        ''' Add (/ overwrite) a file to the current state '''
         file = Path(file)
-        filename = str(file)
         if not file.exists():
-            logger.error(f'File "{filename}" does not exist')
-        meta = {}
+            logger.error(f'File does not exist: {file}')
+        if genome and genome not in self.genomes:
+            logger.error(f'Genome is not included in this state: {genome}')
+        filename = str(file)
+        self._files[filename] = {}
         # calculate file md5
-        h = file_hash(file)
-        if md5 and md5 != h:
+        self._files[filename]['md5'] = file_hash(file)
+        if md5 and md5 != self._files[filename]['md5']:
             logger.warning(
-                f'"{filename}" has a different MD5 digest - has it changed?')
-        meta['md5'] = h
-        # auto-fill name with file basename
-        meta['name'] = name if name else basename(file)
-        # auto-fill filetype if guessable
-        if not filetype:
-            filetype, _ = guess_filetype(file)
+                f'"File has changed since this state was initiated: {file}')
+        # fill name or auto-fill with file basename
+        self._files[filename]['name'] = name if name else basename(file)
+        # fill genome
+        if genome:
+            self._files[filename]['genome'] = genome
+        # fill filetype and application if guessable
+        guessed_filetype, guessed_application = guess_filetype(file)
+        filetype = filetype if filetype else guessed_filetype
         if filetype:
-            meta['filetype'] = filetype
-        # fill application
+            self._files[filename]['filetype'] = filetype
         if application:
-            meta['application'] = application
-        self.data[genome][filename] = meta
+            self._files[filename]['application'] = application
+        elif filetype:
+            self._files[filename]['application'] = guessed_application[0]
+        # wrap up
         if self.dump_on_modify:
             self.dump()
 
-    def del_file(self, genome: str, file: Pathish) -> None:
-        ''' Delete a `genome, file` '''
-        file = Path(file)
-        filename = str(file)
+    def del_file(self, file: Pathish) -> None:
+        ''' Delete a file from the current state '''
         try:
-            del(self.data[genome][filename])
+            del(self._files[str(Path(file))])
             if self.dump_on_modify:
                 self.dump()
         except KeyError:
             pass
 
+    def files(self, application: str='', genome: str='') -> list:
+        if application and genome:
+            return [
+                k for k, v  in self._files.items()
+                if v.get(
+                    'application', self._file_attr_defaults['application']
+                    ) == application
+                and v.get(
+                    'genome', self._file_attr_defaults['genome']
+                    ) == genome]
+        if application:
+            return [
+                k for k, v  in self._files.items()
+                if v.get(
+                    'application', self._file_attr_defaults['application']
+                    ) == application]
+        if genome:
+            return [
+                k for k, v  in self._files.items()
+                if v.get(
+                    'genome', self._file_attr_defaults['genome']
+                    ) == genome]
+        return list(self._files.keys())
+
     def __getitem__(self, target) -> Any:
         target = (target, ) if not isinstance(target, tuple) else target
-        genome, file, attr = target + (None, None, None)[len(target):]
-        try:
-            if len(target) == 1:
-                # return {file: {attr: value, }, } of all files for `genome`
-                return self.data[genome]
-            else:
-                file = Path(file)
-                filename = str(file)
-                if len(target) == 2:
-                    # return {attr: value, } of all attrs for `genome, file`
-                    return self.data[genome][filename]
-                if len(target) == 3:
-                    # return the value associated with `genome, file, attr` if
-                    # present else the default value for the attribute
-                    return self.data[genome][filename].get(
-                        attr, self._attr_defaults[attr])
-        except KeyError:
-            logger.error(
-                f'The genome "{genome}", file "{file}", or attribute "{attr}" '
-                'is not included in this multilift state')
-
-    def __setitem__(self, target, value) -> None:
-        genome, file, attr = target
-        if attr not in self._attr_defaults:
-            logger.error(f'Unsupported attribute "{attr}"')
+        file, attr = target + (None, None)[len(target):]
         file = Path(file)
         filename = str(file)
         try:
-            self.data[genome][filename][attr] = value
+            if len(target) == 1:
+                # return {attr: value, } dict for `file`
+                return self._files[filename]
+            # return the value (or default value) for `file, attr`
+            return self._files[filename].get(attr, self._file_attr_defaults[attr])
         except KeyError:
-            if genome not in self.genomes:
-                logger.error(
-                    f'Genome "{genome}" is not included in this multilift state')
-            elif filename not in self.data[genome]:
-                logger.error(
-                    f'File "{filename}" is not included in this multilift state')
+            if filename not in self._files:
+                logger.error(f'File is not included in this state: {file}')
+            logger.error(f'Unsupported attribute: {attr}')
+
+    def __setitem__(self, target, value) -> None:
+        ''' Set an attribute for a specified file '''
+        file, attr = target
+        if attr not in self._file_attr_defaults:
+            logger.error(f'Unsupported attribute: {attr}')
+        file = Path(file)
+        filename = str(file)
+        try:
+            self._files[filename][attr] = value
+        except KeyError:
+            logger.error(f'File is not included in this state: {file}')
         if self.dump_on_modify:
             self.dump()
 
     def __delitem__(self, target) -> None:
-        ''' Delete a genome, file, or attribute '''
+        ''' Delete (aka reset to default) an attribute for a specified file or
+        delete a file from the state '''
         target = (target, ) if not isinstance(target, tuple) else target
-        genome, file, attr = target + (None, None, None)[len(target):]
+        file, attr = target + (None, None)[len(target):]
         try:
             if len(target) == 1:
-                # delete the genome and all associated data
-                self.del_genome(genome)
+                self.del_file(file)
             else:
-                file = Path(file)
-                filename = str(file)
-                if len(target) == 2:
-                    # delete a file associated with a genome
-                    del(self.data[genome][filename])
-                if len(target) == 3:
-                    # delete an attribute of a file
-                    del(self.data[genome][filename][attr])
+                del(self._files[str(Path(file))][attr])
+            if self.dump_on_modify:
+                self.dump()
         except KeyError:
-            if genome not in self.genomes:
-                logger.error(
-                    f'Genome "{genome}" is not included in this multilift state')
-            elif filename not in self.data[genome]:
-                logger.error(
-                    f'File "{filename}" is not included in this multilift state')
-            else:  # attr not in self.data[genome][filename]
-                logger.error(
-                    f'The attribute "{attr}" is not recorded for file "{filename}"')
-        if self.dump_on_modify:
-            self.dump()
+            pass
 
     def __repr__(self) -> str:
         return f'MultiliftState({self.genomes})'
@@ -202,9 +184,16 @@ class MultiliftState():
             rep['genomes'] = self.genomes
         if self.reference:
             rep['reference'] = self.reference
+        if (alignments := self.files(application='alignment')):
+            rep['alignments'] = {}
+            for file in alignments:
+                rep['alignments'][file] = self[file]
         for genome in self.genomes:
-            if self[genome]:
-                rep[genome] = self[genome]
+            if (files := self.files(genome=genome)):
+                rep[genome] = {}
+                for file in files:
+                    rep[genome][file] = \
+                        {k: v for k, v in self[file].items() if k != 'genome'}
         return yaml.dump(
             rep,
             default_flow_style=False, sort_keys=False, explicit_start=True)
@@ -212,10 +201,21 @@ class MultiliftState():
     def load(self) -> None:
         ''' Load the YAML contents of self.file, overwriting current state '''
         with open_helper(self.file) as F:
-            self.data = {} if not (data := yaml.safe_load(F)) else data
+            yaml_data = {} if not (yaml_data := yaml.safe_load(F)) else yaml_data
+        self.genomes = yaml_data.get('genomes', [])
+        self.reference = yaml_data.get('reference', None)
+        self._files = {}
+        try:
+            for filename, metadata in yaml_data['alignments'].items():
+                self.add_file(filename, **metadata)
+        except KeyError:
+            pass
         for genome in self.genomes:
-            if genome not in self.data:
-                self.data[genome] = {}
+            try:
+                for filename, metadata in yaml_data[genome].items():
+                    self.add_file(filename, genome=genome, **metadata)
+            except KeyError:
+                pass
 
     def dump(self) -> None:
         ''' Dump current state as YAML to self.file, overwriting contents '''
