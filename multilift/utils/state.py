@@ -4,17 +4,33 @@ from typing import Any, Union
 
 import yaml
 
-from multilift import __prog__
+from multilift import __prog__, __prog_string__, __website__
 from multilift.utils import basename, file_hash, guess_filetype, open_helper
 
 
 # Globals #####################################################################
 
 
+__all__ = ['MultiliftState']
+
 Pathish = Union[Path, PurePath, str]
 
 logger = logging.getLogger(__prog__)
 
+file_attr_defaults = {
+    'application': '',
+    'genome': '',
+    'name': '',
+    'type': '',
+    'filetype': '',
+    'md5': ''}
+
+yaml_header = f'''\
+# {__prog_string__}
+# This is a {__prog__} configuration file. For help, visit:
+#    {__website__}
+#
+'''
 
 # Classes #####################################################################
 
@@ -22,14 +38,6 @@ logger = logging.getLogger(__prog__)
 class MultiliftState():
     ''' A class to store the current state (aka liftover configuration) of
     multilift '''
-
-    _file_attr_defaults = {
-        'application': '',
-        'genome': '',
-        'name': '',
-        'type': '',
-        'filetype': '',
-        'md5': ''}
 
     def __init__(self, file: Pathish,
                 dump_on_modify: bool=False, overwrite: bool=False) -> None:
@@ -58,7 +66,7 @@ class MultiliftState():
             self.reference = None
         self._files = {
             k: v for k, v in self._files.items()
-            if v.get('genome', _file_attr_defaults['genome']) != genome}
+            if v.get('genome', file_attr_defaults['genome']) != genome}
         if self.dump_on_modify:
             self.dump()
 
@@ -77,7 +85,7 @@ class MultiliftState():
         self._files[filename]['md5'] = file_hash(file)
         if md5 and md5 != self._files[filename]['md5']:
             logger.warning(
-                f'"File has changed since this state was initiated: {file}')
+                f'File has changed since this state was initiated: {file}')
         # fill name or auto-fill with file basename
         self._files[filename]['name'] = name if name else basename(file)
         # fill genome
@@ -110,22 +118,22 @@ class MultiliftState():
             return [
                 k for k, v  in self._files.items()
                 if v.get(
-                    'application', self._file_attr_defaults['application']
+                    'application', file_attr_defaults['application']
                     ) == application
                 and v.get(
-                    'genome', self._file_attr_defaults['genome']
+                    'genome', file_attr_defaults['genome']
                     ) == genome]
         if application:
             return [
                 k for k, v  in self._files.items()
                 if v.get(
-                    'application', self._file_attr_defaults['application']
+                    'application', file_attr_defaults['application']
                     ) == application]
         if genome:
             return [
                 k for k, v  in self._files.items()
                 if v.get(
-                    'genome', self._file_attr_defaults['genome']
+                    'genome', file_attr_defaults['genome']
                     ) == genome]
         return list(self._files.keys())
 
@@ -139,7 +147,7 @@ class MultiliftState():
                 # return {attr: value, } dict for `file`
                 return self._files[filename]
             # return the value (or default value) for `file, attr`
-            return self._files[filename].get(attr, self._file_attr_defaults[attr])
+            return self._files[filename].get(attr, file_attr_defaults[attr])
         except KeyError:
             if filename not in self._files:
                 logger.error(f'File is not included in this state: {file}')
@@ -148,7 +156,7 @@ class MultiliftState():
     def __setitem__(self, target, value) -> None:
         ''' Set an attribute for a specified file '''
         file, attr = target
-        if attr not in self._file_attr_defaults:
+        if attr not in file_attr_defaults:
             logger.error(f'Unsupported attribute: {attr}')
         file = Path(file)
         filename = str(file)
@@ -220,7 +228,7 @@ class MultiliftState():
     def dump(self) -> None:
         ''' Dump current state as YAML to self.file, overwriting contents '''
         with open_helper(self.file, 'w') as F:
-            print(self, file=F, flush=True)
+            print(yaml_header + str(self), file=F, flush=True)
 
     def __enter__(self):
         return self
