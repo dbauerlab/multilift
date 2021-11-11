@@ -3,7 +3,7 @@
 import logging
 import sys
 
-from multilift import __prog__, __prog_string__, parse_args
+from multilift import __prog__, __prog_string__, parse_args, __file__ as multilift_location
 
 
 # Globals #####################################################################
@@ -21,9 +21,13 @@ if __name__ == "__main__":
     logger.info(__prog_string__)
 
     if args.subcommand == 'app':
+        from pathlib import Path
         import streamlit.cli as stcli
-        from multilift.subcommands.multilift_app import multilift_app_path
-        sys.argv = ['streamlit', 'run', multilift_app_path]
+        multilift_app = \
+            Path(multilift_location).resolve().parent / 'subcommands' / 'multilift_app.py'
+        command = ['streamlit', 'run', str(multilift_app)] + remainder
+        command += ['--', '--cache', args.cache]
+        sys.argv = command
         sys.exit(stcli.main())
     elif args.subcommand == 'init':
         from multilift.subcommands.multilift_init import multilift_init

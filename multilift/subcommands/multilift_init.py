@@ -20,7 +20,7 @@ logger = logging.getLogger(__prog__)
 def multilift_init(args: argparse.Namespace) -> None:
     ''' Main routine for the `multilift init` subcommand '''
 
-    with MultiliftState(args.state, overwrite=True) as S:
+    with MultiliftState(args.state, overwrite=False) as S:
         S.add_genome(args.reference, True)
         for lift in args.liftover:
             S.add_genome(lift)

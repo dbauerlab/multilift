@@ -85,8 +85,8 @@ subparser_app = subparsers.add_parser(
     help='launch the multilift web interface')
 subparser_app.set_defaults(quiet=True)  # Running streamlit so silence stderr
 subparser_app.add_argument(
-    '-s', '--state', type=str,
-    help='restore session state with this multilift configuration file')
+    '--cache', type=str, default='tmp',
+    help='directory to use for the multilift cache (%(default)s)')
 
 # multilift init
 subparser_init = subparsers.add_parser(
@@ -117,7 +117,7 @@ subparser_lift = subparsers.add_parser(
     'lift',
     help='perform liftover')
 subparser_lift.add_argument(
-    '-s', '--state', type=str, required=True,
+    'state', type=str,
     help='perform liftover according to this multilift configuration file')
 
 # multilift fetch

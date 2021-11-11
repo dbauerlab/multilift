@@ -52,7 +52,7 @@ supported_filetypes = {
     }
 }
 
-ignored_filetypes = ('.fai', '.gzi', '.bam', '.bai', '.csi')
+ignored_filetypes = ('.fai', '.gzi', '.bam', '.bai', '.csi', '.cram', '.crai')
 
 filetype_associations = {
     ext: filetype
