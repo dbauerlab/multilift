@@ -35,8 +35,5 @@ if __name__ == "__main__":
     elif args.subcommand == 'lift':
         from multilift.subcommands.multilift_lift import multilift_lift
         multilift_lift(args)
-    elif args.subcommand == 'fetch':
-        from multilift.subcommands.multilift_fetch import multilift_fetch
-        multilift_fetch(args)
 
     logger.info('Finished!')

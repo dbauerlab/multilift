@@ -120,17 +120,6 @@ subparser_lift.add_argument(
     'state', type=str,
     help='perform liftover according to this multilift configuration file')
 
-# multilift fetch
-subparser_fetch = subparsers.add_parser(
-    'fetch',
-    help='fetch an annotated GenBank from NCBI')
-subparser_fetch.add_argument(
-    'accession', type=str, nargs='*',
-    help='accession(s) of the nucleotide records to fetch')
-subparser_fetch.add_argument(
-    '--email', type=str, required=True,
-    help='user email address (passed to NCBI to ensure fair usage of the API)')
-
 
 def parse_args() -> (argparse.Namespace, list):
     ''' Validate the command line inputs '''
