@@ -392,6 +392,4 @@ with container_session:
         options=state.available_aligners,
         horizontal=True)
 
-    st.write(state)
-
 ###############################################################################
