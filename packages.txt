@@ -1,0 +1,4 @@
+mafft
+kalign
+clustalo
+muscle
