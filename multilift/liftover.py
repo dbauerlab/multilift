@@ -1,7 +1,8 @@
 from bisect import bisect_left, bisect_right
-from collections import defaultdict as dd
+from collections import defaultdict as dd, deque
 from difflib import get_close_matches
 from io import StringIO
+from math import pow
 import re
 
 
@@ -9,7 +10,7 @@ import re
 # Globals #####################################################################
 
 
-header_re = re.compile(r'(\S+)=(\w+?|"[\S ]+?")')
+header_re = re.compile(r'(\S+)=("[\S ]+"|\w+)')
 
 
 # Classes #####################################################################
@@ -51,7 +52,7 @@ class Lifter():
                 seqid = matches[0]
             else:
                 raise ValueError(
-                    f'No liftover has been calculated for {genome} {seqid}')
+                    f'No liftover has been calculated for sequence ID {seqid} for genome {genome}')
         return (
             self.liftovers[genome][seqid][0],
             max(
@@ -105,7 +106,7 @@ def _liftover_bed(
                 _, line[7] = lifter(genome, seqid, int(line[7]))
             # TODO: Also need to do line[11] and line[12] adjustment!
             print('\t'.join(str(x) for x in line), file=outfile)
-    return 'bed', outfile
+    return '', outfile
 
 
 def _liftover_bedgraph(
@@ -129,7 +130,7 @@ def _liftover_bedgraph(
             line[0], line[1] = lifter(genome, seqid := line[0], int(line[1]))
             _, line[2] = lifter(genome, seqid, int(line[2]))
             print('\t'.join(str(x) for x in line), file=outfile)
-    return 'bedgraph', outfile
+    return '', outfile
 
 
 def _liftover_interact(
@@ -157,7 +158,7 @@ def _liftover_interact(
             line[13], line[14] = lifter(genome, seqid := line[13], int(line[14]))
             _, line[15] = lifter(genome, seqid, int(line[15]))
             print('\t'.join(str(x) for x in line), file=outfile)
-    return 'interact', outfile
+    return '', outfile
 
 
 def _liftover_link(
@@ -181,7 +182,7 @@ def _liftover_link(
             line[3], line[4] = lifter(genome, seqid := line[0], int(line[4]))
             _, line[5] = lifter(genome, seqid, int(line[5]))
             print('\t'.join(str(x) for x in line), file=outfile)
-    return 'link', outfile
+    return '', outfile
 
 
 def _liftover_gxf(
@@ -207,7 +208,7 @@ def _liftover_gxf(
             _, line[4] = lifter(genome, seqid, int(line[4])-1)
             line[4] += 1
             print('\t'.join(str(x) for x in line), file=outfile)
-    return 'gtf', outfile
+    return '', outfile
 
 
 def _liftover_wiggle(
@@ -229,7 +230,7 @@ def _liftover_wiggle(
                 any(line.startswith(s) for s in ('#', 'browser')):
             continue
         elif line.startswith('track'):
-            track_meta = parse_header()
+            track_meta = parse_header(line)
             track_meta['type'] = 'bedGraph'
             print(format_header(track_meta, 'track'), file=outfile)
         elif any(line.startswith(s) for s in ('variableStep', 'fixedStep')):
@@ -257,9 +258,183 @@ def _liftover_wiggle(
             _, stop = lifter(
                 genome, wig_meta['chrom'], start + wig_meta['span'] + 1)
             print(
-                f'{chrom}\t{str(start)}\t{str(stop)}\t{value}',
+                f'{chrom}\t{start}\t{stop}\t{value}',
                 file=outfile)
-    return 'bedgraph', outfile
+    return '.bedgraph', outfile
+
+
+def _liftover_dotbracket(
+        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+    '''
+    PRIVATE. Liftover for dot bracket format data.
+
+    Format spec: https://software.broadinstitute.org/software/igv/RNAsecStructure
+
+    As brackets have to be exactly paired, there's no straightforward way to
+    liftover dot bracket formats directly. We instead parse the data and output
+    as .bp (base pair) format.
+
+    !!! .bp format is 1-based fully-closed ... [1, x]
+    '''
+    outfile = StringIO()
+    seqid = infile.readline().strip('\r\n')[1:].partition(' ')[0]
+    infile.readline()  # ignore the sequence line
+    deques = {'(': deque(), '[': deque(), '{': deque(), '<': deque()}
+    brackets = {')': '(', ']': '[', '}': '{', '>': '<'}
+    pairs = []
+    for i, c in enumerate(infile.readline().strip('\r\n').partition(' ')[0]):
+        try:
+            deques[c].append(i)
+        except KeyError:
+            try:
+                pairs.append(
+                    (c,
+                    lifter(genome, seqid, deques[brackets[c]].pop())[1],
+                    lifter(genome, seqid, i)[1]))
+            except KeyError:
+                # unpaired base
+                pass
+    print('color:\t0\t0\t0', file=outfile)
+    ref_seqid = lifter(genome, seqid, 0)[0]
+    pairs.sort(key=lambda x: (x[1], -x[2]))
+    current = [(p := pairs[0])[0], p[1], p[1], p[2], p[2]]
+    for p in pairs[1:]:
+        if (p[0] == current[0]) \
+                and (p[1] == current[2] + 1) \
+                and (p[2] == current[3] - 1):
+            current[2] += 1
+            current[3] -= 1
+        else:
+            print(
+                f'{ref_seqid}\t'
+                f'{current[1]+1}\t{current[2]+1}\t'
+                f'{current[3]+1}\t{current[4]+1}\t'
+                '0',
+                file=outfile)
+            current = [p[0], p[1], p[1], p[2], p[2]]
+    print(
+        f'{ref_seqid}\t'
+        f'{current[1]+1}\t{current[2]+1}\t'
+        f'{current[3]+1}\t{current[4]+1}\t'
+        '0',
+        file=outfile)
+    return '.bp', outfile
+
+
+def _liftover_basepair(
+        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+    '''
+    PRIVATE. Liftover for RNA base pairing format data.
+
+    Format spec: https://software.broadinstitute.org/software/igv/RNAsecStructure
+
+    !!! .bp format is 1-based fully-closed ... [1, x]
+    '''
+    outfile = StringIO()
+    for line in infile:
+        if not (line := line.strip('\r\n')) or \
+                any(line.startswith(s) for s in ('#', )):
+            continue
+        elif line.startswith('color'):
+            print(line, file=outfile)
+        else:
+            line = line.split('\t')
+            line[1:5] = [int(x)-1 for x in line[1:5]]
+            pairs = [
+                (lifter(genome, seqid, p[0])[1], lifter(genome, seqid, p[1])[1])
+                for p in zip(
+                    range(line[1], line[2]+1), range(line[4], line[3]-1, -1))]
+            ref_seqid = lifter(genome, line[0], 0)[0]
+            current = [(p := pairs[0])[0], p[0], p[1], p[1]]
+            for p in pairs[1:]:
+                if (p[0] == current[1] + 1) and (p[1] == current[2] - 1):
+                    current[1] += 1
+                    current[2] -= 1
+                else:
+                    print(
+                        f'{ref_seqid}\t'
+                        f'{current[0]+1}\t{current[1]+1}\t'
+                        f'{current[2]+1}\t{current[3]+1}\t'
+                        f'{line[5]}',
+                        file=outfile)
+                    current = [p[0], p[0], p[1], p[1]]
+            print(
+                f'{ref_seqid}\t'
+                f'{current[0]+1}\t{current[1]+1}\t'
+                f'{current[2]+1}\t{current[3]+1}\t'
+                f'{line[5]}',
+                file=outfile)
+    return '', outfile
+
+
+def _liftover_dotplot(
+        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+    '''
+    PRIVATE. Liftover for RNA base pairing probability data.
+
+    Format spec: https://software.broadinstitute.org/software/igv/RNAsecStructure
+
+    !!! .bp format is 1-based fully-closed ... [1, x]
+    '''
+    if len(lifter.liftovers[genome]) > 1:
+        raise ValueError(
+            'Cannot lift over dotplot (.dp) data where more than one sequence \
+            has been provided for the genome. Data should be converted to \
+            base pair (.bp) format.')
+    seqid = list(lifter.liftovers[genome].keys())[0]
+    infile.readline()  # length of sequence
+    infile.readline()  # column headers
+    prob_pairs = [[], [], []]  # 3 for the different probability ranges
+    for line in infile:
+        if not (line := line.strip('\r\n')) or \
+                any(line.startswith(s) for s in ('#', )):
+            continue
+        left, right, prob = line.split('\t')
+        left = int(left) - 1
+        right = int(right) - 1
+        prob = pow(10, -float(prob))
+        if 0.1 <= prob < 0.3:
+            prob_pairs[0].append(
+                (lifter(genome, seqid, left)[1],
+                lifter(genome, seqid, right)[1]))
+        elif 0.3 <= prob < 0.8:
+            prob_pairs[1].append(
+                (lifter(genome, seqid, left)[1],
+                lifter(genome, seqid, right)[1]))
+        elif 0.8 <= prob:
+            prob_pairs[2].append(
+                (lifter(genome, seqid, left)[1],
+                lifter(genome, seqid, right)[1]))
+    prob_pairs = \
+        [sorted(pairs, key=lambda x: (x[0], -x[1])) for pairs in prob_pairs]
+    ref_seqid = lifter(genome, seqid, 0)[0]
+    outfile = StringIO()
+    print(
+        'color:\t255\t218\t125\tPairing probability 10-30%\n'
+        'color:\t113\t195\t209\tPairing probability 30-80%\n'
+        'color:\t51\t114\t38\tPairing probability >80%',
+        file=outfile)
+    for prob_level, pairs in enumerate(prob_pairs):
+        current = [(p := pairs[0])[0], p[0], p[1], p[1]]
+        for p in pairs[1:]:
+            if (p[0] == current[1] + 1) and (p[1] == current[2] - 1):
+                current[1] += 1
+                current[2] -= 1
+            else:
+                print(
+                    f'{ref_seqid}\t'
+                    f'{current[0]+1}\t{current[1]+1}\t'
+                    f'{current[2]+1}\t{current[3]+1}\t'
+                    f'{prob_level}',
+                    file=outfile)
+                current = [p[0], p[0], p[1], p[1]]
+        print(
+            f'{ref_seqid}\t'
+            f'{current[0]+1}\t{current[1]+1}\t'
+            f'{current[2]+1}\t{current[3]+1}\t'
+            f'{prob_level}',
+            file=outfile)
+    return '.bp', outfile
 
 
 def liftover(infile: StringIO, ftype: str, lifter: Lifter, genome: str):
@@ -276,3 +451,9 @@ def liftover(infile: StringIO, ftype: str, lifter: Lifter, genome: str):
             return _liftover_wiggle(infile, lifter, genome)
         case 'gtf':
             return _liftover_gxf(infile, lifter, genome)
+        case 'dotbracket':
+            return _liftover_dotbracket(infile, lifter, genome)
+        case 'basepair':
+            return _liftover_basepair(infile, lifter, genome)
+        case 'dotplot':
+            return _liftover_dotplot(infile, lifter, genome)

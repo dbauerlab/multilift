@@ -40,7 +40,7 @@ def sniff_filetype(file: str|Path|PurePath) -> tuple[str, tuple[str]]:
                 return 'stockholm', ('alignment', )
             case '.bed':
                 return 'bed', ('data', )
-            case '.link':
+            case '.bedpe':
                 return 'link', ('data', )
             case 'inter' | 'interact':
                 return 'interact', ('data', )
@@ -50,4 +50,10 @@ def sniff_filetype(file: str|Path|PurePath) -> tuple[str, tuple[str]]:
                 return 'wiggle', ('data', )
             case '.gtf' | '.gff' | '.gff2' | '.gff3':
                 return 'gtf', ('data', )
+            case '.dot' | '.db' | '.bracket' | '.dbn':
+                return 'dotbracket', ('data', )
+            case '.bp':
+                return 'basepair', ('data', )
+            case '.dp':
+                return 'dotplot', ('data', )
     return '', ()

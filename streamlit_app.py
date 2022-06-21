@@ -1,7 +1,6 @@
 from collections import defaultdict as dd
-from itertools import chain, cycle
+from itertools import cycle
 from io import StringIO, BytesIO
-from pathlib import Path, PurePath
 import tarfile
 
 from Bio import AlignIO, SeqIO
@@ -137,7 +136,7 @@ def callback_run_multilift() -> None:
                                     or mapping == ref_seqid:
                                 SeqIO.write(
                                     SeqRecord(
-                                        id=genome, description=seqid,
+                                        id=f'{genome} {seqid}', description='',
                                         seq=state.multilift_sequences[k].seq),
                                     F, 'fasta')
                         returncode, result = align(F, state.uiobj_aligner)
@@ -176,17 +175,20 @@ def callback_run_multilift() -> None:
                     if 'data' not in application:
                         continue
                     try:
-                        ext, lift_file = \
+                        new_ext, lift_file = \
                             liftover(
                                 StringIO(file.getvalue().decode('utf-8')),
                                 ftype, L, genome)
                         tar_data = BytesIO(bytes(lift_file.getvalue(), 'utf-8'))
                         tar_info = tarfile.TarInfo(
-                            f'{state.session_id}/liftover/{genome}/{PurePath(file.name).stem}.{ext}')
+                            f'{state.session_id}/liftover/{genome}/{file.name}{new_ext}')
                         tar_info.size = len(tar_data.getbuffer())
                         Tar.addfile(tar_info, tar_data)
-                    except:
-                        message(f'Error lifting over {ref_fname}', 3)
+                    except Exception as e:
+                        message(
+                            f'Error lifting over {file.name} for {genome}. '
+                            f'Job failed with: {e}',
+                            3)
                         return
 
     message('multilift ran sucessfully')
@@ -391,5 +393,6 @@ with container_session:
         key='uiobj_aligner',
         options=state.available_aligners,
         horizontal=True)
+
 
 ###############################################################################
