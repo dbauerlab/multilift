@@ -350,9 +350,17 @@ if state.display_level >= 2:
                         if genome == state.multilift_reference),
                     cycle((0, 1))):
                 with container_2_cols[col]:
-                    current = \
-                        [k for k in state.multilift_sequences.keys()
-                        if k[2] == ref_seqid]
+                    if sum(
+                            1
+                            for _, seqid, _, genome in state.multilift_sequences.keys()
+                            if genome == state.multilift_reference) == 1:
+                        current = \
+                            [k for k in state.multilift_sequences.keys()
+                            if k[3] != state.multilift_reference]
+                    else:
+                        current = \
+                            [k for k in state.multilift_sequences.keys()
+                            if k[2] == ref_seqid]
                     st.multiselect(
                         f'{ref_seqid}',
                         key=f'uiobj_sequence_assigner_{ref_seqid}',
