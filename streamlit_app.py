@@ -292,24 +292,19 @@ with container_0:
 if state.display_level >= 1:
 
     with container_1:
-        container_1_cols = st.columns((1, 1, 1))
 
-        for genome, col in zip(state.multilift_genomes, cycle((0, 1, 2))):
+        for key, col in zip(
+                state.multilift_genomes + ['alignment'],
+                cycle((0, 1, 2))):
+            if col == 0:
+                container_1_cols = st.columns((1, 1, 1))
             with container_1_cols[col]:
                 st.file_uploader(
-                    f'{genome}:',
-                    key=f'uiobj_uploader_{genome}',
+                    f'{key}:' if key != 'alignment' else 'Alignment(s) (optional):',
+                    key=f'uiobj_uploader_{key}',
                     accept_multiple_files=True,
                     on_change=refresh_ui,
                     args=(1, False))
-
-        with container_1_cols[0]:
-            st.file_uploader(
-                'Alignment(s) (optional):',
-                key='uiobj_uploader_alignment',
-                accept_multiple_files=True,
-                on_change=refresh_ui,
-                args=(1, False))
 
         if st.session_state.display_level == 1:
             st.button(
