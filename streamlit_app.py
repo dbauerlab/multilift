@@ -244,7 +244,10 @@ st.set_page_config(page_title=__prog__, layout='wide')
 st.title(f'{__prog__}')
 
 st.markdown(
-    '<style> footer {visibility: hidden;} </style>',
+    '<style> '
+    'footer {visibility: hidden;} '
+    '#MainMenu {visibility: hidden;} '
+    '</style>',
     unsafe_allow_html=True)
 
 # top-level messaging & errors
