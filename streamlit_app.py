@@ -69,7 +69,7 @@ def callback_set_reference() -> None:
 
 
 def callback_file_uploader() -> None:
-    success = True
+    clear_message = success = True
     # a dict of sequences {[file, seq.id, mapping, key]: seq, }
     state.multilift_sequences = {}
     ref_seqids = []
@@ -80,12 +80,12 @@ def callback_file_uploader() -> None:
             ftype, application = sniff_filetype(file.name)
             if ftype == '':
                 message(f'Unknown or unsupported filetype: {file.name}', 3)
-                success = False
+                clear_message = success = False
                 break
             if key == 'alignment':
                 if 'alignment' not in application:
                     message(f'{file.name} is not an alignment file', 3)
-                    success = False
+                    clear_message = success = False
                     break
                 with StringIO(file.getvalue().decode('utf-8')) as F:
                     state.multilift_sequences.update(
@@ -95,7 +95,7 @@ def callback_file_uploader() -> None:
             elif set(('alignment', 'sequence')) & set(application):
                 if bool(state.uiobj_uploader_alignment):
                     message(f'Sequences provided as well as alignments: {file.name}', 3)
-                    success = False
+                    clear_message = success = False
                     break
                 with StringIO(file.getvalue().decode('utf-8')) as F:
                     if key == state.multilift_reference:
@@ -112,7 +112,24 @@ def callback_file_uploader() -> None:
                         for seq in SeqIO.parse(F, ftype)})
         if not success:
             break
-    refresh_ui(2 if success else 1, success)
+    # filter aligners based on input
+    longest_seq = max(len(s) for s in state.multilift_sequences.values())
+    aligners = set(state.available_aligners)
+    if longest_seq > 10000:
+        dropped = set(('clustalo', 'kalign', 'muscle'))
+        state.available_aligners = list(set(state.available_aligners) - dropped)
+        message(
+            f'Aligners disabled due to sequence lengths input: {", ".join(dropped)}',
+            2)
+        clear_message = False
+    elif longest_seq > 2000:
+        dropped = set(('clustalo', ))
+        state.available_aligners = list(set(state.available_aligners) - dropped)
+        message(
+            f'Aligners disabled due to sequence lengths input: {", ".join(dropped)}',
+            2)
+        clear_message = False
+    refresh_ui(2 if success else 1, clear_message)
 
 
 def callback_assign_sequence(mapping: str, current: list[tuple]) -> None:
