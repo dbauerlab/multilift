@@ -2,7 +2,6 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict as dd, deque
 from difflib import get_close_matches
 from io import StringIO
-from math import pow
 import re
 
 
@@ -392,7 +391,7 @@ def _liftover_dotplot(
         left, right, prob = line.split('\t')
         left = int(left) - 1
         right = int(right) - 1
-        prob = pow(10, -float(prob))
+        prob = 10 ** -float(prob)
         if 0.1 <= prob < 0.3:
             prob_pairs[0].append(
                 (lifter(genome, seqid, left)[1],
