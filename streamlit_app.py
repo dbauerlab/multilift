@@ -72,7 +72,10 @@ def callback_file_uploader() -> None:
     success = True
     # a dict of sequences {[file, seq.id, mapping, key]: seq, }
     state.multilift_sequences = {}
-    for key in ['alignment'] + state.multilift_genomes:
+    ref_seqids = []
+    for key in ['alignment'] + \
+            [state.multilift_reference] + \
+            [g for g in state.multilift_genomes if g != state.multilift_reference]:
         for file in state[f'uiobj_uploader_{key}']:
             ftype, application = sniff_filetype(file.name)
             if ftype == '':
@@ -95,8 +98,17 @@ def callback_file_uploader() -> None:
                     success = False
                     break
                 with StringIO(file.getvalue().decode('utf-8')) as F:
-                    state.multilift_sequences.update(
-                        {(file.name, seq.id, None, key): seq
+                    if key == state.multilift_reference:
+                        for seq in SeqIO.parse(F, ftype):
+                            ref_seqids.append(seq.id)
+                        state.multilift_sequences[
+                            (file.name, seq.id, None, key)] = seq
+                    else:
+                        state.multilift_sequences.update(
+                        {(file.name,
+                            seq.id,
+                            None if len(ref_seqids) > 1 else ref_seqids[0],
+                            key): seq
                         for seq in SeqIO.parse(F, ftype)})
         if not success:
             break
@@ -345,17 +357,9 @@ if state.display_level >= 2:
                         if genome == state.multilift_reference),
                     cycle((0, 1))):
                 with container_2_cols[col]:
-                    if sum(
-                            1
-                            for _, seqid, _, genome in state.multilift_sequences.keys()
-                            if genome == state.multilift_reference) == 1:
-                        current = \
-                            [k for k in state.multilift_sequences.keys()
-                            if k[3] != state.multilift_reference]
-                    else:
-                        current = \
-                            [k for k in state.multilift_sequences.keys()
-                            if k[2] == ref_seqid]
+                    current = \
+                        [k for k in state.multilift_sequences.keys()
+                        if k[2] == ref_seqid]
                     st.multiselect(
                         f'{ref_seqid}',
                         key=f'uiobj_sequence_assigner_{ref_seqid}',
