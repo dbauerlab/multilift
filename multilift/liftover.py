@@ -245,17 +245,15 @@ def _liftover_wiggle(
             wig_meta['span'] = int(wig_meta.get('span', 1))
         else:  # a data line
             if wig_meta['wig_type'] == 'variableStep':
-                start, value = line.split()
-                start = int(start)
+                loc, value = line.split()
+                loc = int(loc) - 1
             elif wig_meta['wig_type'] == 'fixedStep':
                 current_step += 1
-                start = wig_meta['start'] + (current_step * wig_meta['step'])
+                loc = wig_meta['start'] + (current_step * wig_meta['step']) - 1
                 value = line
-            # -1 converts to 0-based
-            chrom, start = lifter(genome, wig_meta['chrom'], start - 1)
-            # +1 converts to half-open
+            chrom, start = lifter(genome, wig_meta['chrom'], loc)
             _, stop = lifter(
-                genome, wig_meta['chrom'], start + wig_meta['span'] + 1)
+                genome, wig_meta['chrom'], loc + wig_meta['span'])
             print(
                 f'{chrom}\t{start}\t{stop}\t{value}',
                 file=outfile)
