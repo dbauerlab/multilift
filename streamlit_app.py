@@ -160,6 +160,7 @@ def callback_run_multilift() -> None:
     state.multilift_download = BytesIO()
     igv_resources = []
     maf_alignments = []
+    maf_coordinates = []
 
     with Lifter() as L, \
             tarfile.open(fileobj=state.multilift_download, mode='w:gz') as Tar:
@@ -207,6 +208,32 @@ def callback_run_multilift() -> None:
                                     id=f'{s.id}.{seq_group}', description='',
                                     seq=s.seq)
                                 for s in aln]))
+                        # add coordinates
+                        blank_seq = '.' * aln.get_alignment_length()
+                        coords = [
+                            SeqRecord(
+                                id=f'multilift.{seq_group}', description='',
+                                seq=Seq(blank_seq))]
+                        for s in aln:
+                            seq = list(s.seq)
+                            i = 0
+                            for j, nt in enumerate(s.seq):
+                                if nt != '-':
+                                    seq[j] = '|' if i % 10 == 9 else '.'
+                                    i += 1
+                            i = 1
+                            for j, nt in enumerate(seq[:]):
+                                if nt == '|':
+                                    coord_str = str(i * 10)
+                                    if '-' not in seq[j:j+len(coord_str)] \
+                                            and j+len(coord_str) < len(seq):
+                                        seq[j:j+len(coord_str)] = list(coord_str)
+                                    i += 1
+                            coords.append(
+                                SeqRecord(
+                                    id=f'{s.id}.{seq_group}', description='',
+                                    seq=Seq(''.join(seq))))
+                        maf_coordinates.append(MultipleSeqAlignment(coords))
                         # add consensus to IGVGenome
                         SeqIO.write(
                             SeqRecord(
@@ -260,6 +287,18 @@ def callback_run_multilift() -> None:
             Tar.addfile(tar_info, tar_data)
             igv_resources.append(
                 f'alignment/multilift_{state.session_id}.maf')
+
+            # write coordinates file
+            with StringIO() as MAF:
+                AlignIO.write(maf_coordinates, MAF, 'maf')
+                del(maf_coordinates)
+                tar_data = BytesIO(bytes(MAF.getvalue(), 'utf-8'))
+            tar_info = tarfile.TarInfo(
+                f'{state.session_id}/alignment/multilift_{state.session_id}.coords.maf')
+            tar_info.size = len(tar_data.getbuffer())
+            Tar.addfile(tar_info, tar_data)
+            igv_resources.append(
+                f'alignment/multilift_{state.session_id}.coords.maf')
 
         with container_message, st.spinner('Performing liftovers'):
             state.multilift_liftovers = dd(dict)
