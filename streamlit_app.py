@@ -547,7 +547,5 @@ with container_session:
             if 'mafft' in available_aligners else 0,
         horizontal=True)
 
-    st.write(state)
-
 
 ###############################################################################
