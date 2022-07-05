@@ -4,6 +4,8 @@ from difflib import get_close_matches
 from io import StringIO
 import re
 
+from Bio.SeqRecord import SeqRecord
+from Bio.Align import MultipleSeqAlignment
 
 
 # Globals #####################################################################
@@ -22,43 +24,38 @@ class Lifter():
     def __init__(self) -> None:
         self.liftovers = dd(dict)
 
-    def add_alignment(self, alignment: dict, ref_genome: str):
+    def add_alignment(self, alignment: MultipleSeqAlignment, lift_name: str):
         '''  '''
-        ref = alignment.pop(ref_genome)
-        _, _, ref_seqid = ref.description.partition(' ')
-        for s in alignment.values():
-            genome = s.id
-            _, _, seqid = s.description.partition(' ')
-            self.liftovers[genome][seqid] = (ref_seqid, [[], []])
+        for seq in alignment:
+            genome = seq.id
+            _, _, seqid = seq.description.partition(' ')
+            self.liftovers[genome][seqid] = (lift_name, [])
             last_nt = -1
-            for ref_nt, lift_nt in zip(ref.seq, s.seq):
-                if '-' == ref_nt == lift_nt:  # alignment gap for both
-                    pass
-                elif ref_nt == '-':  # insertion relative to the reference
-                    last_nt += 1
-                    self.liftovers[genome][seqid][1][0].append(last_nt)
-                elif lift_nt == '-':  # deletion relative to the reference
-                    self.liftovers[genome][seqid][1][1].append(last_nt)
-                else:  # sequence for both
+            for nt in seq.seq:
+                if nt == '-':
+                    self.liftovers[genome][seqid][1].append(last_nt)
+                else:
                     last_nt += 1
 
     def __call__(self, genome: str, seqid: str, pos: int) -> (str, int):
         ''' Liftover `seqid:pos` into reference-space for a given `genome` '''
         if not seqid in self.liftovers[genome]:
-            matches = get_close_matches(seqid, self.liftovers[genome].keys(), 1)
-            if matches and \
-                    (matches[0].startswith(seqid) or seqid.startswith(matches[0])):
+            if (matches := get_close_matches(seqid, self.liftovers[genome].keys(), 1)) \
+                    and (matches[0].startswith(seqid) or seqid.startswith(matches[0])):
                 seqid = matches[0]
             else:
                 raise ValueError(
-                    f'No liftover has been calculated for sequence ID {seqid} for genome {genome}')
+                    f'No liftover has been calculated for sequence ID {seqid} '
+                    f'for genome {genome}')
         return (
             self.liftovers[genome][seqid][0],
-            max(
-                0,
-                pos - bisect_right(self.liftovers[genome][seqid][1][0], pos)
-                    + bisect_left(self.liftovers[genome][seqid][1][1], pos)))
+            pos + bisect_left(self.liftovers[genome][seqid][1], pos))
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self ,type, value, traceback):
+        pass
 
     def __repr__(self) -> str:
         return 'Lifter()'

@@ -57,3 +57,15 @@ def sniff_filetype(file: str|Path|PurePath) -> tuple[str, tuple[str]]:
             case '.dp':
                 return 'dotplot', ('data', )
     return '', ()
+
+
+def create_igv_session(session_id: str, igv_resources: list[str]) -> str:
+    ''' '''
+    xml_string = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+    xml_string += f'<Session genome="genome/multilift_{session_id}.fa" hasGeneTrack="false" hasSequenceTrack="false" locus="All" version="8">\n'
+    xml_string += '    <Resources>\n'
+    for r in igv_resources:
+        xml_string += f'        <Resource path="{r}"/>\n'
+    xml_string += '    </Resources>\n'
+    xml_string += '</Session>'
+    return xml_string

@@ -4,15 +4,17 @@ from io import StringIO, BytesIO
 import tarfile
 
 from Bio import AlignIO, SeqIO
+from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from Bio.Align import MultipleSeqAlignment
 
 import streamlit as st
 
 from multilift import __prog__, __prog_string__, __website__
-from multilift.st_utils import message, v_space
-from multilift.utils import sniff_filetype
-from multilift.msa import align, test_aligners
 from multilift.liftover import Lifter, liftover
+from multilift.msa import align, aligner_limits, generate_consensus, test_aligners
+from multilift.st_utils import message, v_space
+from multilift.utils import basename, create_igv_session, sniff_filetype
 
 
 ###############################################################################
@@ -33,10 +35,8 @@ def session_init() -> None:
         st.experimental_get_query_params().get(
             'session_id', [st.scriptrunner.get_script_run_ctx().session_id])[0]
     state.available_aligners = test_aligners()
-    # a list of genome names
     state.multilift_genomes = []
-    # the current reference genome
-    state.multilift_reference = ''
+    state.multilift_seq_groups = ['Group1', ]
     refresh_ui()
 
 
@@ -46,8 +46,6 @@ def session_init() -> None:
 
 
 def callback_add_genome() -> None:
-    if not state.multilift_genomes:
-        state.multilift_reference = state.uiobj_add_genome
     state.multilift_genomes.append(state.uiobj_add_genome)
     state.uiobj_add_genome = ''
     refresh_ui(0)
@@ -63,19 +61,10 @@ def callback_del_genome() -> None:
     refresh_ui(0)
 
 
-def callback_set_reference() -> None:
-    state.multilift_reference = state.uiobj_reference_picker
-    refresh_ui(0)
-
-
 def callback_file_uploader() -> None:
     clear_message = success = True
-    # a dict of sequences {[file, seq.id, mapping, key]: seq, }
-    state.multilift_sequences = {}
-    ref_seqids = []
-    for key in ['alignment'] + \
-            [state.multilift_reference] + \
-            [g for g in state.multilift_genomes if g != state.multilift_reference]:
+    state.multilift_sequences = {}  # {(key, file, seq.id, group): seq, }
+    for key in ['alignment'] + state.multilift_genomes:
         for file in state[f'uiobj_uploader_{key}']:
             ftype, application = sniff_filetype(file.name)
             if ftype == '':
@@ -87,114 +76,190 @@ def callback_file_uploader() -> None:
                     message(f'{file.name} is not an alignment file', 3)
                     clear_message = success = False
                     break
-                with StringIO(file.getvalue().decode('utf-8')) as F:
-                    state.multilift_sequences.update(
-                        {(file.name, seq.id, None, key): seq
-                        for aln in AlignIO.parse(F, ftype)
-                        for seq in aln})
             elif set(('alignment', 'sequence')) & set(application):
                 if bool(state.uiobj_uploader_alignment):
                     message(f'Sequences provided as well as alignments: {file.name}', 3)
                     clear_message = success = False
                     break
-                with StringIO(file.getvalue().decode('utf-8')) as F:
-                    if key == state.multilift_reference:
-                        for seq in SeqIO.parse(F, ftype):
-                            ref_seqids.append(seq.id)
-                        state.multilift_sequences[
-                            (file.name, seq.id, None, key)] = seq
-                    else:
-                        state.multilift_sequences.update(
-                        {(file.name,
-                            seq.id,
-                            None if len(ref_seqids) > 1 else ref_seqids[0],
-                            key): seq
-                        for seq in SeqIO.parse(F, ftype)})
+                try:
+                    with StringIO(file.getvalue().decode('utf-8')) as F:
+                        if key == 'alignment':
+                            state.multilift_sequences.update(
+                                {(key, file.name, seq.id, None): seq
+                                for seq in AlignIO.read(F, ftype)})
+                        else:
+                            state.multilift_sequences.update(
+                                {(key, file.name, seq.id, None): seq
+                                for seq in SeqIO.parse(F, ftype)})
+                except:
+                    message(f'Error reading sequences: {file.name}', 3)
+                    clear_message = success = False
+                    break
         if not success:
             break
     # filter aligners based on input
-    longest_seq = max(len(s) for s in state.multilift_sequences.values())
-    aligners = set(state.available_aligners)
-    if longest_seq > 10000:
-        dropped = set(('clustalo', 'kalign', 'muscle'))
-        state.available_aligners = list(set(state.available_aligners) - dropped)
-        message(
-            f'Aligners disabled due to sequence lengths input: {", ".join(dropped)}',
-            2)
-        clear_message = False
-    elif longest_seq > 2000:
-        dropped = set(('clustalo', ))
-        state.available_aligners = list(set(state.available_aligners) - dropped)
-        message(
-            f'Aligners disabled due to sequence lengths input: {", ".join(dropped)}',
-            2)
-        clear_message = False
+    if not bool(state.uiobj_uploader_alignment):
+        longest_seq = max(len(s) for s in state.multilift_sequences.values())
+        for aligner, limit in aligner_limits.items():
+            if longest_seq > limit:
+                try:
+                    state.available_aligners.remove(aligner)
+                except KeyError:
+                    pass
+        if not state.available_aligners:
+            message(
+                'No installed aligners are capable of aligning sequences of '
+                'this length. Please upload pre-computed alignments.',
+                2)
+            clear_message = success = False
     refresh_ui(2 if success else 1, clear_message)
 
 
-def callback_assign_sequence(mapping: str, current: list[tuple]) -> None:
-    new = set(state[f'uiobj_sequence_assigner_{mapping}'])
+def callback_sequence_assigner_name(i: int) -> None:
+    old_name = state.multilift_seq_groups[i]
+    new_name = state[f'uiobj_sequence_assigner_{i}_name']
+    if not new_name:
+        message('All sequence groups must have names', 3)
+        return
+    if new_name in state.multilift_seq_groups:
+        message('All sequence groups must have different names', 3)
+        return
+    state.multilift_seq_groups[i] = new_name
+    refresh_ui(2)
+
+
+def callback_addremove_seq_group(add_group: bool=True) -> None:
+    if add_group:
+        state.multilift_seq_groups.append(
+            f'Group{len(state.multilift_seq_groups) + 1}')
+    else:
+        drop_idx = str(len(state.multilift_seq_groups) - 1)
+        state.multilift_seq_groups.pop()
+        state.multilift_sequences = {
+            (k[0], k[1], k[2], None if k[3] == drop_idx else k[3]): v
+            for k, v in state.multilift_sequences.items()}
+        del(state[f'uiobj_sequence_assigner_{i}_name'])
+        del(state[f'uiobj_sequence_assigner_{i}'])
+    refresh_ui(2)
+
+
+def callback_assign_sequence(group: str, current: list[tuple]) -> None:
+    new = set(state[f'uiobj_sequence_assigner_{group}'])
     current = set(current)
     try:
         k = (new - current).pop()
-        seq = state.multilift_sequences.pop(k)
-        state.multilift_sequences[(k[0], k[1], mapping, k[3])] = seq
     except KeyError:
         k = (current - new).pop()
-        seq = state.multilift_sequences.pop(k)
-        state.multilift_sequences[(k[0], k[1], None, k[3])] = seq
+        group = None
+    seq = state.multilift_sequences.pop(k)
+    state.multilift_sequences[(k[0], k[1], k[2], group)] = seq
     refresh_ui(2)
 
 
 def callback_run_multilift() -> None:
     state.multilift_download = BytesIO()
-    with tarfile.open(fileobj=state.multilift_download, mode='w:gz') as Tar:
+    igv_resources = []
+    maf_alignments = []
 
-        if not bool(state.uiobj_uploader_alignment):
-            with container_message, st.spinner('Aligning sequences'):
-                alignments = []
-                for ref_fname, ref_seqid, _, _ in (
-                        k for k in state.multilift_sequences.keys()
-                        if k[3] == state.multilift_reference):
-                    with StringIO() as F:
-                        for k in state.multilift_sequences.keys():
-                            fname, seqid, mapping, genome = k
-                            if (fname == ref_fname
-                                        and seqid == ref_seqid
-                                        and genome == state.multilift_reference) \
-                                    or mapping == ref_seqid:
-                                SeqIO.write(
-                                    SeqRecord(
-                                        id=f'{genome} {seqid}', description='',
-                                        seq=state.multilift_sequences[k].seq),
-                                    F, 'fasta')
-                        returncode, result = align(F, state.uiobj_aligner)
+    with Lifter() as L, \
+            tarfile.open(fileobj=state.multilift_download, mode='w:gz') as Tar:
+
+        with StringIO() as IGVGenome:
+
+            if not bool(state.uiobj_uploader_alignment):
+                consensus_seqs = []
+                for i, seq_group in enumerate(state.multilift_seq_groups):
+                    with container_message, \
+                            st.spinner(f'Aligning sequence(s): {seq_group}'):
+                        with StringIO() as F:
+                            for (genome, fname, seqid, group), seq \
+                                    in state.multilift_sequences.items():
+                                if group == str(i):
+                                    SeqIO.write(
+                                        SeqRecord(
+                                            id=f'{genome} {seqid}',
+                                            description='',
+                                            seq=seq.seq),
+                                        F, 'fasta')
+                            returncode, result = align(F, state.uiobj_aligner)
                         if returncode:
                             message(
                                 f'Error making {state.uiobj_aligner} alignment for '
-                                    f'[{ref_fname}] {ref_seqid} mappings',
+                                f'sequence group "{seq_group}"',
                                 3)
                             return
-                        alignments.append(
-                            {s.id:s for s in SeqIO.parse(result, 'fasta')})
+                        aln = AlignIO.read(result, 'fasta')
+                        L.add_alignment(aln, seq_group)
+                        # write alignment as fasta
                         tar_data = BytesIO(bytes(result.getvalue(), 'utf-8'))
                         tar_info = tarfile.TarInfo(
-                            f'{state.session_id}/alignment/{ref_seqid}.fa')
+                            f'{state.session_id}/alignment/{seq_group}.fa')
                         tar_info.size = len(tar_data.getbuffer())
                         Tar.addfile(tar_info, tar_data)
+                        # add to maf
+                        cons = Seq(generate_consensus(aln))
+                        maf_alignments.append(
+                            MultipleSeqAlignment(
+                                [SeqRecord(
+                                    id=f'multilift.{seq_group}', description='',
+                                    seq=cons)] +
+                                [SeqRecord(
+                                    id=f'{s.id}.{seq_group}', description='',
+                                    seq=s.seq)
+                                for s in aln]))
+                        # add consensus to IGVGenome
+                        SeqIO.write(
+                            SeqRecord(
+                                id=f'{seq_group}', description='',seq=cons),
+                            IGVGenome, 'fasta')
 
-        with container_message, st.spinner('Calculating liftovers'):
-            L = Lifter()
-            if not bool(state.uiobj_uploader_alignment):
-                for aln in alignments:
-                    L.add_alignment(aln, state.multilift_reference)
-            else:
-                for fname in set(k[0] for k in state.multilift_sequences.keys()):
-                    L.add_alignment(
-                        {k[2]: SeqRecord(id=k[2], description=v.id, seq=v.seq)
+            else:  # alignments provided
+                with container_message, st.spinner('Reading alignment(s)'):
+                    for fname in set(k[1] for k in state.multilift_sequences.keys()):
+                        aln = MultipleSeqAlignment(
+                            [SeqRecord(
+                                id=f'{k[3]} {k[2]}', description='', seq=v.seq)
                             for k, v in state.multilift_sequences.items()
-                            if k[0] == fname},
-                        state.multilift_reference)
+                            if k[1] == fname])
+                        L.add_alignment(aln, basename(fname))
+                        # add to maf
+                        cons = Seq(generate_consensus(aln))
+                        maf_alignments.append(
+                            MultipleSeqAlignment(
+                                [SeqRecord(
+                                    id=f'multilift.{basename(fname)}',
+                                    description='',
+                                    seq=cons)] +
+                                [SeqRecord(
+                                    id=f'{s.id}.{basename(fname)}',
+                                    description='',
+                                    seq=s.seq)
+                                for s in aln]))
+                        # add consensus to IGVGenome
+                        SeqIO.write(
+                            SeqRecord(
+                                id=basename(fname), description='',
+                                seq=cons),
+                            IGVGenome, 'fasta')
+
+            # write IGVGenome as fasta
+            tar_data = BytesIO(bytes(IGVGenome.getvalue(), 'utf-8'))
+            tar_info = tarfile.TarInfo(
+                f'{state.session_id}/genome/multilift_{state.session_id}.fa')
+            tar_info.size = len(tar_data.getbuffer())
+            Tar.addfile(tar_info, tar_data)
+
+            # write maf file
+            with StringIO() as MAF:
+                AlignIO.write(maf_alignments, MAF, 'maf')
+                del(maf_alignments)
+                tar_data = BytesIO(bytes(MAF.getvalue(), 'utf-8'))
+            tar_info = tarfile.TarInfo(
+                f'{state.session_id}/alignment/multilift_{state.session_id}.maf')
+            tar_info.size = len(tar_data.getbuffer())
+            Tar.addfile(tar_info, tar_data)
+            igv_resources.append(
+                f'alignment/multilift_{state.session_id}.maf')
 
         with container_message, st.spinner('Performing liftovers'):
             state.multilift_liftovers = dd(dict)
@@ -213,12 +278,22 @@ def callback_run_multilift() -> None:
                             f'{state.session_id}/liftover/{genome}/{file.name}{new_ext}')
                         tar_info.size = len(tar_data.getbuffer())
                         Tar.addfile(tar_info, tar_data)
+                        igv_resources.append(
+                            f'liftover/{genome}/{file.name}{new_ext}')
                     except Exception as e:
                         message(
                             f'Error lifting over {file.name} for {genome}. '
                             f'Job failed with: {e}',
                             3)
                         return
+
+        with container_message, st.spinner('Preparing IGV session'):
+            tar_data = BytesIO(bytes(
+                create_igv_session(state.session_id, igv_resources), 'utf-8'))
+            tar_info = tarfile.TarInfo(
+                f'{state.session_id}/igv_session.xml')
+            tar_info.size = len(tar_data.getbuffer())
+            Tar.addfile(tar_info, tar_data)
 
     message('multilift ran sucessfully')
     refresh_ui(3, False)
@@ -281,7 +356,7 @@ st.write(f'[{__prog_string__}]({__website__})')
 
 
 with container_0:
-    container_0_cols = st.columns((1, 1, 1))
+    container_0_cols = st.columns((1, 2))
 
     with container_0_cols[0]:
         st.text_input(
@@ -300,15 +375,6 @@ with container_0:
                 default=state.multilift_genomes,
                 on_change=callback_del_genome,
                 help='Remove a genome to delete it from the current state')
-
-        with container_0_cols[2]:
-            st.selectbox(
-                'Reference genome',
-                key='uiobj_reference_picker',
-                options=state.multilift_genomes,
-                index=state.multilift_genomes.index(state.multilift_reference),
-                on_change=callback_set_reference,
-                help='Set a genome as the reference for the current state')
 
         if state.display_level == 0 and len(state.multilift_genomes) >= 2:
             st.button(
@@ -351,52 +417,69 @@ if state.display_level >= 1:
 if state.display_level >= 2:
 
     with container_2:
-        container_2_cols = st.columns((1, 1))
+
+        unassigned = \
+            [k for k in state.multilift_sequences.keys() if k[3] is None]
 
         if bool(state.uiobj_uploader_alignment):
+            container_2_cols = st.columns((1, 1))
             for genome, col in zip(state.multilift_genomes, cycle((0, 1))):
                 with container_2_cols[col]:
                     current = \
                         [k for k in state.multilift_sequences.keys()
-                        if k[2] == genome]
+                        if k[3] == genome]
                     st.multiselect(
                         f'{genome}',
                         key=f'uiobj_sequence_assigner_{genome}',
-                        options=[
-                            k for k in state.multilift_sequences.keys()
-                            if k[2] in (None, genome)],
+                        options=unassigned + current,
                         default=current,
-                        format_func=lambda x: f'[{x[0]}] {x[1]}',
+                        format_func=lambda x: f'[{x[1]}] {x[2]}',
                         on_change=callback_assign_sequence,
                         args=(genome, current))
 
         else:
-            for ref_seqid, col in zip(
-                    (seqid
-                        for _, seqid, _, genome in state.multilift_sequences.keys()
-                        if genome == state.multilift_reference),
-                    cycle((0, 1))):
-                with container_2_cols[col]:
+            container_2_cols = st.columns((1, 2))
+            for i, seq_group in enumerate(state.multilift_seq_groups):
+                with container_2_cols[0]:
+                    st.text_input(
+                        '',
+                        key=f'uiobj_sequence_assigner_{i}_name',
+                        value=seq_group,
+                        on_change=callback_sequence_assigner_name,
+                        args=(i, ))
+                with container_2_cols[1]:
                     current = \
                         [k for k in state.multilift_sequences.keys()
-                        if k[2] == ref_seqid]
+                        if k[3] == str(i)]
                     st.multiselect(
-                        f'{ref_seqid}',
-                        key=f'uiobj_sequence_assigner_{ref_seqid}',
-                        options=[
-                            k for k in state.multilift_sequences.keys()
-                            if k[2] in (None, ref_seqid)
-                            and k[3] is not state.multilift_reference],
+                        '',
+                        key=f'uiobj_sequence_assigner_{i}',
+                        options=unassigned + current,
                         default=current,
-                        format_func=lambda x: f'[{x[0]}] {x[1]}',
+                        format_func=lambda x: f'[{x[1]}] {x[2]}',
                         on_change=callback_assign_sequence,
-                        args=(ref_seqid, current))
-
-        if st.session_state.display_level >= 2:
+                        args=(str(i), current),
+                        help='This value serves as the liftover chromosome name')
             st.button(
-                'Run multilift',
-                key='uiobj_update',
-                on_click=callback_run_multilift)
+                'Add sequence group',
+                key='uiobj_sequence_group_add',
+                on_click=callback_addremove_seq_group)
+            st.button(
+                'Remove sequence group',
+                key='uiobj_sequence_group_remove',
+                on_click=callback_addremove_seq_group,
+                args=(False, ),
+                disabled=len(state.multilift_seq_groups) == 1)
+
+        if unassigned:
+            st.info(
+                'Unassigned sequences: ' +
+                ', '.join("[{1}] {2}".format(*k) for k in unassigned))
+        elif st.session_state.display_level >= 2:
+                st.button(
+                    'Run multilift',
+                    key='uiobj_update',
+                    on_click=callback_run_multilift)
 
 
 ###############################################################################
@@ -415,11 +498,17 @@ if state.display_level >= 3:
 
 
 with container_session:
+    available_aligners = sorted(state.available_aligners)
     st.radio(
         'Alignment program',
         key='uiobj_aligner',
-        options=state.available_aligners,
+        options=available_aligners,
+        index=\
+            available_aligners.index('mafft')
+            if 'mafft' in available_aligners else 0,
         horizontal=True)
+
+    st.write(state)
 
 
 ###############################################################################

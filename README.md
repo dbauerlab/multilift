@@ -1,6 +1,6 @@
 # *multilift*: liftover from multiple sequence alignments
 
-`multilift` facilitates the liftover to 'reference-space' of data recorded for
+`multilift` facilitates the liftover to 'alignment-space' of data recorded for
 mutliple related, variant, sequences by calculating or parsing a multiple
 sequence alignment of their genomes.
 
