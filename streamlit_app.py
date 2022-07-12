@@ -2,6 +2,7 @@ from collections import defaultdict as dd
 from itertools import cycle
 from io import StringIO, BytesIO
 import tarfile
+import zipfile
 
 from Bio import AlignIO, SeqIO
 from Bio.Seq import Seq
@@ -13,7 +14,7 @@ import streamlit as st
 from multilift import __prog__, __prog_string__, __website__
 from multilift.liftover import Lifter, liftover
 from multilift.msa import align, aligner_limits, generate_consensus, test_aligners
-from multilift.st_utils import message, v_space
+from multilift.st_utils import add_to_archive, message, v_space
 from multilift.utils import basename, create_igv_session, sniff_filetype
 
 
@@ -173,7 +174,10 @@ def callback_run_multilift() -> None:
     igv_genomes = []
     L = Lifter()
 
-    with tarfile.open(fileobj=state.multilift_download, mode='w:gz') as Tar:
+    with \
+            tarfile.open(fileobj=state.multilift_download, mode='w:gz') \
+            if state.uiobj_download_format == '.tar.gz' else \
+            zipfile.ZipFile(state.multilift_download, 'w') as Arc:
 
         if not bool(state.uiobj_uploader_alignment):
             for i, seq_group in enumerate(state.multilift_seq_groups):
@@ -199,11 +203,11 @@ def callback_run_multilift() -> None:
                     aln = AlignIO.read(result, 'fasta')
                     L.add_alignment(aln, seq_group)
                     # write alignment as fasta
-                    tar_data = BytesIO(bytes(result.getvalue(), 'utf-8'))
-                    tar_info = tarfile.TarInfo(
-                        f'{state.session_id}/alignment/{seq_group}.fa')
-                    tar_info.size = len(tar_data.getbuffer())
-                    Tar.addfile(tar_info, tar_data)
+                    add_to_archive(
+                        Arc,
+                        BytesIO(bytes(result.getvalue(), 'utf-8')),
+                        f'{state.session_id}/alignment/{seq_group}.fa',
+                        state.uiobj_download_format)
                     # store consensus
                     cons = Seq(generate_consensus(aln))
                     igv_genomes.append(
@@ -252,23 +256,21 @@ def callback_run_multilift() -> None:
         # write consensus sequences
         with StringIO() as F:
             SeqIO.write(igv_genomes, F, 'fasta')
-            tar_data = BytesIO(bytes(F.getvalue(), 'utf-8'))
-        tar_info = tarfile.TarInfo(
-            f'{state.session_id}/genome/multilift_{state.session_id}.fa')
-        tar_info.size = len(tar_data.getbuffer())
-        Tar.addfile(tar_info, tar_data)
+            add_to_archive(
+                Arc,
+                BytesIO(bytes(F.getvalue(), 'utf-8')),
+                f'{state.session_id}/genome/multilift_{state.session_id}.fa',
+                state.uiobj_download_format)
         del(igv_genomes)
 
         # write maf alignment
         with StringIO() as F:
             AlignIO.write(maf_alignments, F, 'maf')
-            tar_data = BytesIO(bytes(F.getvalue(), 'utf-8'))
-        tar_info = tarfile.TarInfo(
-            f'{state.session_id}/alignment/multilift_{state.session_id}.maf')
-        tar_info.size = len(tar_data.getbuffer())
-        Tar.addfile(tar_info, tar_data)
-        igv_resources.append(
-            f'alignment/multilift_{state.session_id}.maf')
+            add_to_archive(
+                Arc,
+                BytesIO(bytes(F.getvalue(), 'utf-8')),
+                f'{state.session_id}/alignment/multilift_{state.session_id}.maf',
+                state.uiobj_download_format)
 
         # compute maf coordinates
         for idx in range(len(maf_alignments)):
@@ -301,11 +303,11 @@ def callback_run_multilift() -> None:
         # write coordinates file
         with StringIO() as F:
             AlignIO.write(maf_alignments, F, 'maf')
-            tar_data = BytesIO(bytes(F.getvalue(), 'utf-8'))
-        tar_info = tarfile.TarInfo(
-            f'{state.session_id}/alignment/multilift_{state.session_id}.coords.maf')
-        tar_info.size = len(tar_data.getbuffer())
-        Tar.addfile(tar_info, tar_data)
+            add_to_archive(
+                Arc,
+                BytesIO(bytes(F.getvalue(), 'utf-8')),
+                f'{state.session_id}/alignment/multilift_{state.session_id}.coords.maf',
+                state.uiobj_download_format)
         igv_resources.append(
             f'alignment/multilift_{state.session_id}.coords.maf')
         del(maf_alignments)
@@ -327,21 +329,22 @@ def callback_run_multilift() -> None:
                             f'Job failed with: {e}',
                             3)
                         return
-                    tar_data = BytesIO(bytes(lift_file.getvalue(), 'utf-8'))
-                    tar_info = tarfile.TarInfo(
-                        f'{state.session_id}/liftover/{genome}/{file.name}{new_ext}')
-                    tar_info.size = len(tar_data.getbuffer())
-                    Tar.addfile(tar_info, tar_data)
+                    add_to_archive(
+                        Arc,
+                        BytesIO(bytes(lift_file.getvalue(), 'utf-8')),
+                        f'{state.session_id}/liftover/{genome}/{file.name}{new_ext}',
+                        state.uiobj_download_format)
                     igv_resources.append(
                         f'liftover/{genome}/{file.name}{new_ext}')
 
         with container_message, st.spinner('Preparing IGV session'):
-            tar_data = BytesIO(bytes(
-                create_igv_session(state.session_id, igv_resources), 'utf-8'))
-            tar_info = tarfile.TarInfo(
-                f'{state.session_id}/igv_session.xml')
-            tar_info.size = len(tar_data.getbuffer())
-            Tar.addfile(tar_info, tar_data)
+            add_to_archive(
+                Arc,
+                BytesIO(bytes(
+                    create_igv_session(state.session_id, igv_resources),
+                    'utf-8')),
+                f'{state.session_id}/igv_session.xml',
+                state.uiobj_download_format)
 
     message('multilift ran sucessfully')
     refresh_ui(3, False)
@@ -543,7 +546,7 @@ if state.display_level >= 3:
        st.download_button(
             'Download multilift results',
             data=state.multilift_download,
-            file_name=f'{state.session_id}.tar.gz',
+            file_name=f'{state.session_id}{state.uiobj_download_format}',
             mime='application/octet-stream')
 
 
@@ -551,6 +554,7 @@ if state.display_level >= 3:
 
 
 with container_session:
+
     available_aligners = sorted(state.available_aligners)
     st.radio(
         'Alignment program',
@@ -559,6 +563,13 @@ with container_session:
         index=\
             available_aligners.index('mafft')
             if 'mafft' in available_aligners else 0,
+        horizontal=True)
+
+    st.radio(
+        'Download format',
+        key='uiobj_download_format',
+        options=['.tar.gz', '.zip'],
+        index=0,
         horizontal=True)
 
 
