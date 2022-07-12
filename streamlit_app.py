@@ -14,8 +14,8 @@ import streamlit as st
 from multilift import __prog__, __prog_string__, __website__
 from multilift.liftover import Lifter, liftover
 from multilift.msa import align, aligner_limits, generate_consensus, test_aligners
-from multilift.st_utils import add_to_archive, message, v_space
-from multilift.utils import basename, create_igv_session, sniff_filetype
+from multilift.st_utils import message, v_space
+from multilift.utils import add_to_archive, basename, create_igv_session, sniff_filetype
 
 
 ###############################################################################
