@@ -16,7 +16,7 @@ Requirements:
 > Python >= 3.10
 
 One or more of the multiple sequence aligners:
-> mafft (recommended)
+> mafft (required, default)
 >
 > kalign
 >
