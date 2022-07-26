@@ -1,5 +1,8 @@
 [server]
 maxUploadSize = 50
 
+[runner]
+fastReruns = true
+
 [theme]
 base = "light"

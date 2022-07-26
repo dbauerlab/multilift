@@ -12,7 +12,7 @@ from Bio.Align import MultipleSeqAlignment
 import streamlit as st
 
 from multilift import __prog__, __prog_string__, __website__
-from multilift.liftover import Lifter, liftover
+from multilift.liftover import annotate, Lifter, liftover
 from multilift.msa import align, aligner_limits, generate_consensus, test_aligners
 from multilift.st_utils import message, v_space
 from multilift.utils import add_to_archive, basename, create_igv_session, sniff_filetype
@@ -271,6 +271,8 @@ def callback_run_multilift() -> None:
                 BytesIO(bytes(F.getvalue(), 'utf-8')),
                 f'{state.session_id}/alignment/multilift_{state.session_id}.maf',
                 state.uiobj_download_format)
+            igv_resources.append(
+                f'alignment/multilift_{state.session_id}.maf')
 
         # compute maf coordinates
         for idx in range(len(maf_alignments)):
@@ -312,23 +314,41 @@ def callback_run_multilift() -> None:
             f'alignment/multilift_{state.session_id}.coords.maf')
         del(maf_alignments)
 
+        # liftover data files, create annotations
         with container_message, st.spinner('Performing liftovers'):
             for genome in state.multilift_genomes:
                 for file in state[f'uiobj_uploader_{genome}']:
                     ftype, application = sniff_filetype(file.name)
-                    if 'data' not in application:
+                    if 'data' in application:
+                        try:
+                            new_ext, lift_file = \
+                                liftover(
+                                    StringIO(file.getvalue().decode('utf-8')),
+                                    ftype, L, genome)
+                        except Exception as e:
+                            message(
+                                f'Error lifting over {file.name} for {genome}. '
+                                    f'Job failed with: {e}',
+                                3)
+                            return
+                    elif 'annotation' in application:
+                        try:
+                            new_ext, lift_file = \
+                                annotate(
+                                    StringIO(file.getvalue().decode('utf-8')),
+                                    L,
+                                    {k[2]: v
+                                        for k, v in state.multilift_sequences.items()
+                                        if k[0] == genome},
+                                    genome)
+                        except Exception as e:
+                            message(
+                                f'Error applying {file.name} annotations to {genome}. '
+                                    f'Job failed with: {e}',
+                                3)
+                            return
+                    else:
                         continue
-                    try:
-                        new_ext, lift_file = \
-                            liftover(
-                                StringIO(file.getvalue().decode('utf-8')),
-                                ftype, L, genome)
-                    except Exception as e:
-                        message(
-                            f'Error lifting over {file.name} for {genome}. '
-                            f'Job failed with: {e}',
-                            3)
-                        return
                     add_to_archive(
                         Arc,
                         BytesIO(bytes(lift_file.getvalue(), 'utf-8')),

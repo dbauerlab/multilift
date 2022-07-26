@@ -60,6 +60,8 @@ def sniff_filetype(file: str|Path|PurePath) -> tuple[str, tuple[str]]:
                 return 'basepair', ('data', )
             case '.dp':
                 return 'dotplot', ('data', )
+            case '.yaml':
+                return 'annotation', ('annotation', )
     return '', ()
 
 
@@ -78,7 +80,7 @@ def create_igv_session(session_id: str, igv_resources: list[str]) -> str:
 def add_to_archive(
     arc: BytesIO, data: BytesIO, name: str, arc_type: str='.tar.gz') -> None:
     ''' '''
-    if arc_type == '.tgz':
+    if arc_type == '.tar.gz':
         info = tarfile.TarInfo(name)
         info.size = len(data.getbuffer())
         arc.addfile(info, data)

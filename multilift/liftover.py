@@ -2,10 +2,18 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict as dd, deque
 from difflib import get_close_matches
 from io import StringIO
+from typing import Callable
 import re
 
-from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+
+import yaml
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
 
 
 # Globals #####################################################################
@@ -78,7 +86,7 @@ def format_header(meta: dict, prefix: str='') -> str:
 
 
 def _liftover_bed(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for BED* format data
 
@@ -106,7 +114,7 @@ def _liftover_bed(
 
 
 def _liftover_bedgraph(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for BED* format data
 
@@ -130,7 +138,7 @@ def _liftover_bedgraph(
 
 
 def _liftover_interact(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for interact (BED5+13) format data
 
@@ -158,7 +166,7 @@ def _liftover_interact(
 
 
 def _liftover_link(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for linked (BED3+BED3+n) files
 
@@ -182,7 +190,7 @@ def _liftover_link(
 
 
 def _liftover_gxf(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for GFF and GTF format data
 
@@ -208,7 +216,7 @@ def _liftover_gxf(
 
 
 def _liftover_wiggle(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for wiggle format data.
 
@@ -258,7 +266,7 @@ def _liftover_wiggle(
 
 
 def _liftover_dotbracket(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for dot bracket format data.
 
@@ -316,7 +324,7 @@ def _liftover_dotbracket(
 
 
 def _liftover_basepair(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for RNA base pairing format data.
 
@@ -362,7 +370,7 @@ def _liftover_basepair(
 
 
 def _liftover_dotplot(
-        infile: StringIO, lifter: Lifter, genome: str) -> tuple[str, StringIO]:
+        infile: StringIO, lifter: Lifter, genome: str) -> [str, StringIO]:
     '''
     PRIVATE. Liftover for RNA base pairing probability data.
 
@@ -431,7 +439,7 @@ def _liftover_dotplot(
     return '.bp', outfile
 
 
-def liftover(infile: StringIO, ftype: str, lifter: Lifter, genome: str):
+def liftover(infile: StringIO, ftype: str, lifter: Lifter, genome: str) -> Callable:
     match ftype:
         case 'bed':
             return _liftover_bed(infile, lifter, genome)
@@ -451,3 +459,57 @@ def liftover(infile: StringIO, ftype: str, lifter: Lifter, genome: str):
             return _liftover_basepair(infile, lifter, genome)
         case 'dotplot':
             return _liftover_dotplot(infile, lifter, genome)
+
+
+def annotate(infile: StringIO, lifter: Lifter, seqs: dict, genome: str) -> [str, StringIO]:
+    ''' '''
+    annots = yaml.load(infile, Loader)
+    outfile = StringIO()
+    for seqid in annots.keys():
+        for annot in annots[seqid]:
+            label = annot['label']
+            start = annot.get('start', 1) - 1
+            stop = annot.get('stop', len(seqs[seqid]))
+            reverse = annot.get('reverse', False)
+            points = annot.get('points', [])
+            if points:
+                step = 3 if annot.get('codons', False) else 1
+                if points is True:
+                    points = range(1, (stop - start) // step + 1)
+                for p in points:
+                    if reverse:
+                        p_stop = stop - step * (p - 1)
+                        p_start = p_stop - step
+                        if step == 3:
+                            p_site = Seq(seqs[seqid].seq[p_start:p_stop]).reverse_complement().translate()
+                        else:
+                            p_site = Seq(seqs[seqid].seq[p_start:p_stop]).reverse_complement()
+                    else:
+                        p_start = start + step * (p - 1)
+                        p_stop = p_start + step
+                        if step == 3:
+                            p_site = Seq(seqs[seqid].seq[p_start:p_stop]).translate()
+                        else:
+                            p_site = seqs[seqid].seq[p_start:p_stop]
+                    lift_genome, p_start = lifter(genome, seqid, p_start)
+                    _, p_stop = lifter(genome, seqid, p_stop)
+                    print(
+                        f'{lift_genome}\t'
+                            f'{p_start}\t'
+                            f'{p_stop}\t'
+                            f'{label}_{p_site}{p}\t'
+                            '.\t'
+                            f'{"-" if reverse else "+"}',
+                        file=outfile)
+            else:
+                lift_genome, start = lifter(genome, seqid, start)
+                _, stop = lifter(genome, seqid, stop)
+                print(
+                    f'{lift_genome}\t'
+                        f'{start}\t'
+                        f'{stop}\t'
+                        f'{label}\t'
+                        '.\t'
+                        f'{"-" if reverse else "+"}',
+                    file=outfile)
+    return '.bed', outfile
