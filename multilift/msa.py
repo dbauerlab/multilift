@@ -1,6 +1,7 @@
 from collections import Counter
 from io import StringIO
 import shlex
+from shutil import which
 from subprocess import Popen, PIPE, run
 
 from Bio.Align import MultipleSeqAlignment
@@ -53,14 +54,8 @@ def generate_consensus(alignment: MultipleSeqAlignment) -> str:
 
 def test_aligners() -> set[str]:
     ''' '''
-    aligner_versions = {
-        'mafft': 'mafft --version',
-        'kalign': 'kalign -v',
-        'muscle': 'muscle -version',
-        'clustalo': 'clustalo --version'}
-    return set((
-        k for k, v in aligner_versions.items()
-        if run(shlex.split(v), capture_output=True).returncode == 0))
+    aligners = ('mafft', 'kalign', 'muscle', 'clustalo')
+    return sorted(aln for aln in aligners if which(aln))
 
 
 def align(file: StringIO, prog: str='mafft', threads: int=1) -> tuple[int, StringIO]:

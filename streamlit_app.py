@@ -14,13 +14,25 @@ import streamlit as st
 from multilift import __prog__, __prog_string__, __website__
 from multilift.liftover import annotate, Lifter, liftover
 from multilift.msa import align, aligner_limits, generate_consensus, test_aligners
-from multilift.st_utils import message, v_space
 from multilift.utils import add_to_archive, basename, create_igv_session, sniff_filetype
 
 
 ###############################################################################
 # Functions ###################################################################
 ###############################################################################
+
+def v_space(n: int=1, hline: bool=False) -> None:
+    ''' '''
+    for i in range(n):
+        st.write('')
+    if hline:
+        st.write('***')
+
+def message(message: str='', level: int=0) -> None:
+    ''' Display a message in the `container_message` area on script re-run.
+    0: success, 1: info, 2: warning, 3: error '''
+    state.message = message
+    state.message_level = level
 
 
 def refresh_ui(display_level: int=0, clear_message: bool=True) -> None:
@@ -34,7 +46,8 @@ def session_init() -> None:
     ''' Initiate the streamlit session state '''
     state.session_id = \
         st.experimental_get_query_params().get(
-            'session_id', [st.scriptrunner.get_script_run_ctx().session_id])[0]
+            'session_id',
+            [st.runtime.scriptrunner.script_run_context.get_script_run_ctx().session_id])[0]
     state.available_aligners = test_aligners()
     state.multilift_genomes = []
     state.multilift_seq_groups = ['Group1', ]
@@ -575,14 +588,13 @@ if state.display_level >= 3:
 
 with container_session:
 
-    available_aligners = sorted(state.available_aligners)
     st.radio(
         'Alignment program',
         key='uiobj_aligner',
-        options=available_aligners,
+        options=state.available_aligners,
         index=\
-            available_aligners.index('mafft')
-            if 'mafft' in available_aligners else 0,
+            state.available_aligners.index('mafft')
+            if 'mafft' in state.available_aligners else 0,
         horizontal=True)
 
     st.radio(
@@ -591,6 +603,8 @@ with container_session:
         options=['.tar.gz', '.zip'],
         index=0,
         horizontal=True)
+
+    st.write(state)
 
 
 ###############################################################################
